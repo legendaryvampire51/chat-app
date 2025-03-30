@@ -1,7 +1,7 @@
 // Get the backend URL from environment variable or use localhost as fallback
 const BACKEND_URL = window.location.hostname === 'localhost' 
   ? 'http://localhost:3000'
-  : 'https://chat-app-backend-ybjt.onrender.com';
+  : 'https://chat-app-backend-9a5t.onrender.com';
 
 // Global variables
 let socket = null;
@@ -9,18 +9,6 @@ let currentUsername = localStorage.getItem('username') || '';
 let typingTimeout = null;
 let lastTypingStatus = false;
 let activeMessageEdit = null; // Track which message is being edited
-
-// DOM Elements
-const loginContainer = document.getElementById('login-container');
-const chatContainer = document.getElementById('chat-container');
-const messagesContainer = document.getElementById('messages');
-const messageInput = document.getElementById('message-input');
-const userDisplay = document.getElementById('user-display');
-
-// Create user list container
-const userListContainer = document.createElement('div');
-userListContainer.className = 'user-list-container';
-chatContainer.appendChild(userListContainer);
 
 // Function to add a message to the chat
 function addMessage(data) {
@@ -265,7 +253,24 @@ function showChat() {
     const userDisplay = document.getElementById('user-display');
     
     if (loginContainer) loginContainer.style.display = 'none';
-    if (chatContainer) chatContainer.style.display = 'flex';
+    if (chatContainer) {
+        chatContainer.style.display = 'flex';
+        
+        // Check if user list container exists, if not create it
+        if (!document.querySelector('.user-list-container')) {
+            console.log('Creating user list container');
+            const userListContainer = document.createElement('div');
+            userListContainer.className = 'user-list-container';
+            userListContainer.innerHTML = `
+                <div class="user-list-header">
+                    Online Users (<span>0</span>)
+                </div>
+                <div class="user-list"></div>
+            `;
+            chatContainer.appendChild(userListContainer);
+        }
+    }
+    
     if (messageInput) messageInput.focus();
     if (userDisplay) userDisplay.textContent = `Logged in as: ${currentUsername}`;
     
