@@ -414,4 +414,28 @@ button:hover {
     color: white;
     padding: 5px;
     z-index: 9999;
+}
+
+/* Read receipts */
+.read-receipt {
+    font-size: 0.8em;
+    color: #666;
+    margin-top: 5px;
+    text-align: right;
+    position: absolute;
+    bottom: 5px;
+    right: 10px;
+}
+
+.message.sent .read-receipt {
+    color: #2979FF;
+}
+
+.fa-check {
+    opacity: 0.6;
+}
+
+.fa-check-double {
+    opacity: 1;
+    color: #2979FF;
 } 

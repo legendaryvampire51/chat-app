@@ -12,6 +12,8 @@ let activeMessageEdit = null; // Track which message is being edited
 let socketConnected = false; // Track socket connection state
 let connectionRetries = 0;
 const MAX_CONNECTION_RETRIES = 3;
+let unreadMessages = []; // Track messages that need to be marked as read
+let readReceipts = {}; // Store read receipts for messages
 
 // Function to add a message to the chat
 function addMessage(data) {
@@ -205,6 +207,11 @@ function setupSocketEvents(callback) {
             debugInfo.style.backgroundColor = 'green';
         }
         
+        // Request read receipts when connected
+        if (socket && socketConnected) {
+            socket.emit('getReadReceipts');
+        }
+        
         // If we have a username, automatically join the chat
         if (currentUsername) {
             console.log('Auto-joining with username:', currentUsername);
@@ -274,6 +281,11 @@ function setupSocketEvents(callback) {
     socket.on('message', (messageData) => {
         console.log('Received message:', messageData);
         addMessageToChat(messageData);
+        
+        // If this message is from someone else, mark it as read
+        if (messageData.sender && messageData.sender !== currentUsername && messageData.id) {
+            markMessageAsRead(messageData.id);
+        }
     });
 
     // Legacy event handlers for backward compatibility
@@ -363,6 +375,20 @@ function setupSocketEvents(callback) {
             if (controls) {
                 controls.remove();
             }
+        }
+    });
+
+    // Read receipts
+    socket.on('readReceipts', (data) => {
+        console.log('Received read receipts:', data);
+        if (data && data.readReceipts) {
+            // Update read receipts
+            readReceipts = {...readReceipts, ...data.readReceipts};
+            
+            // Update read receipt display for all affected messages
+            Object.keys(data.readReceipts).forEach(messageId => {
+                updateReadReceiptDisplay(messageId, data.readReceipts[messageId]);
+            });
         }
     });
 }
@@ -638,6 +664,11 @@ function addMessageToChat(messageData) {
             messageElement.classList.add('sent');
         } else {
             messageElement.classList.add('received');
+            
+            // Mark other users' messages as read when displayed
+            if (messageData.id) {
+                markMessageAsRead(messageData.id);
+            }
         }
         
         // Message sender
@@ -667,6 +698,20 @@ function addMessageToChat(messageData) {
         timeElement.textContent = formattedTime;
         messageElement.appendChild(timeElement);
         
+        // Add read receipt if this is the user's message
+        if (senderName === currentUsername && messageData.id) {
+            const readReceiptElement = document.createElement('div');
+            readReceiptElement.className = 'read-receipt';
+            readReceiptElement.innerHTML = '<i class="fas fa-check"></i>'; // Default to sent but not read
+            readReceiptElement.title = 'Sent';
+            messageElement.appendChild(readReceiptElement);
+            
+            // Update read receipt if we have that information
+            if (readReceipts[messageData.id]) {
+                updateReadReceiptDisplay(messageData.id, readReceipts[messageData.id]);
+            }
+        }
+        
         // Add edit/delete controls if message is from current user and not deleted
         if (senderName === currentUsername && !messageData.deleted && messageData.id) {
             const controlsElement = document.createElement('div');
@@ -694,6 +739,12 @@ function addMessageToChat(messageData) {
     
     messagesContainer.appendChild(messageElement);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    
+    // Mark visible messages as read when they appear
+    if (messageData.type !== 'system' && messageData.id && 
+        messageData.sender && messageData.sender !== currentUsername) {
+        markMessageAsRead(messageData.id);
+    }
 }
 
 // Edit message function
@@ -828,4 +879,69 @@ function deleteMessage(messageId) {
             messageId: messageId
         });
     }
-} 
+}
+
+// Mark message as read
+function markMessageAsRead(messageId) {
+    if (messageId && socket && socketConnected) {
+        // Add to unread messages if not already there
+        if (!unreadMessages.includes(messageId)) {
+            unreadMessages.push(messageId);
+        }
+        
+        // Debounce the markAsRead event to avoid sending too many events
+        clearTimeout(window.markAsReadTimeout);
+        window.markAsReadTimeout = setTimeout(() => {
+            if (unreadMessages.length > 0 && socket && socketConnected) {
+                socket.emit('markAsRead', { messageIds: unreadMessages });
+                unreadMessages = [];
+            }
+        }, 1000); // Wait 1 second before sending
+    }
+}
+
+// Update read receipt display for a message
+function updateReadReceiptDisplay(messageId, readByUsers) {
+    const messageElement = document.querySelector(`.message[data-id="${messageId}"]`);
+    if (!messageElement) return;
+    
+    // Only update for messages sent by current user
+    if (!messageElement.classList.contains('sent')) return;
+    
+    let readReceiptElement = messageElement.querySelector('.read-receipt');
+    
+    if (!readReceiptElement) {
+        readReceiptElement = document.createElement('div');
+        readReceiptElement.className = 'read-receipt';
+        messageElement.appendChild(readReceiptElement);
+    }
+    
+    // Filter out current user
+    const otherUsers = readByUsers.filter(user => user !== currentUsername);
+    
+    if (otherUsers.length === 0) {
+        readReceiptElement.innerHTML = '<i class="fas fa-check"></i>'; // Sent but not read
+        readReceiptElement.title = 'Sent';
+    } else if (otherUsers.length === 1) {
+        readReceiptElement.innerHTML = '<i class="fas fa-check-double"></i>'; // Read by one user
+        readReceiptElement.title = `Read by ${otherUsers[0]}`;
+    } else {
+        readReceiptElement.innerHTML = '<i class="fas fa-check-double"></i>'; // Read by multiple users
+        readReceiptElement.title = `Read by ${otherUsers.join(', ')}`;
+    }
+}
+
+// Handle window visibility changes
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+        // When window becomes visible, mark all visible messages as read
+        const visibleMessages = document.querySelectorAll('.message.received');
+        const messageIds = Array.from(visibleMessages)
+            .map(el => el.dataset.id)
+            .filter(id => id); // Filter out undefined IDs
+        
+        if (messageIds.length > 0 && socket && socketConnected) {
+            socket.emit('markAsRead', { messageIds });
+        }
+    }
+}); 

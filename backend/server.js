@@ -43,6 +43,7 @@ const users = new Map();
 const typingUsers = new Map(); // Changed to Map to store timeout IDs
 const messageHistory = []; // Store message history
 const MAX_HISTORY = 50; // Maximum number of messages to store
+const messageReadStatus = new Map(); // Track read status of messages by each user
 
 // Helper function to get active users list
 function getActiveUsers() {
@@ -61,8 +62,22 @@ function addToHistory(messageData) {
     messageData.timestamp = new Date().toISOString();
   }
   
+  // Initialize read status for this message
+  if (messageData.type === 'user') {
+    const readStatus = new Map();
+    // Message is read by sender
+    if (messageData.sender) {
+      readStatus.set(messageData.sender, true);
+    }
+    messageReadStatus.set(messageData.id, readStatus);
+  }
+  
   messageHistory.push(messageData);
   if (messageHistory.length > MAX_HISTORY) {
+    // Remove read status for oldest message if exceeding limit
+    if (messageHistory[0].id && messageReadStatus.has(messageHistory[0].id)) {
+      messageReadStatus.delete(messageHistory[0].id);
+    }
     messageHistory.shift(); // Remove oldest message if exceeding limit
   }
   return messageData;
@@ -71,6 +86,35 @@ function addToHistory(messageData) {
 // Find message by ID
 function findMessageById(messageId) {
   return messageHistory.findIndex(msg => msg.id === messageId);
+}
+
+// Get read status of a message
+function getMessageReadStatus(messageId) {
+  if (messageReadStatus.has(messageId)) {
+    const readByUsers = Array.from(messageReadStatus.get(messageId).keys())
+      .filter(username => messageReadStatus.get(messageId).get(username));
+    return readByUsers;
+  }
+  return [];
+}
+
+// Update read status for messages
+function updateReadStatus(username, messageIds) {
+  const updatedMessageIds = [];
+  
+  messageIds.forEach(messageId => {
+    if (messageReadStatus.has(messageId)) {
+      const readStatus = messageReadStatus.get(messageId);
+      // If the user hasn't read this message yet
+      if (!readStatus.has(username) || !readStatus.get(username)) {
+        readStatus.set(username, true);
+        messageReadStatus.set(messageId, readStatus);
+        updatedMessageIds.push(messageId);
+      }
+    }
+  });
+  
+  return updatedMessageIds;
 }
 
 io.on('connection', (socket) => {
@@ -119,6 +163,24 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Handle read receipts
+  socket.on('markAsRead', (data) => {
+    if (!username || !data.messageIds || !Array.isArray(data.messageIds)) return;
+    
+    // Update read status for each message
+    const updatedMessageIds = updateReadStatus(username, data.messageIds);
+    
+    if (updatedMessageIds.length > 0) {
+      // Broadcast updated read status to all users
+      const readReceipts = {};
+      updatedMessageIds.forEach(messageId => {
+        readReceipts[messageId] = getMessageReadStatus(messageId);
+      });
+      
+      io.emit('readReceipts', { readReceipts });
+    }
+  });
+
   // Edit message
   socket.on('editMessage', (editData) => {
     if (username) {
@@ -155,6 +217,18 @@ io.on('connection', (socket) => {
         });
       }
     }
+  });
+
+  // Get updated read receipts
+  socket.on('getReadReceipts', () => {
+    if (!username) return;
+    
+    const allReadReceipts = {};
+    messageReadStatus.forEach((readStatus, messageId) => {
+      allReadReceipts[messageId] = getMessageReadStatus(messageId);
+    });
+    
+    socket.emit('readReceipts', { readReceipts: allReadReceipts });
   });
 
   // Handle typing status
