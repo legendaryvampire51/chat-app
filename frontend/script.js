@@ -692,11 +692,15 @@ function addMessageToChat(messageData) {
         
         messageElement.appendChild(textElement);
         
+        // Add timestamp and read receipt container for better layout
+        const metaContainer = document.createElement('div');
+        metaContainer.className = 'message-meta';
+        
         // Add timestamp
         const timeElement = document.createElement('div');
         timeElement.className = 'timestamp';
         timeElement.textContent = formattedTime;
-        messageElement.appendChild(timeElement);
+        metaContainer.appendChild(timeElement);
         
         // Add read receipt if this is the user's message
         if (senderName === currentUsername && messageData.id) {
@@ -704,13 +708,15 @@ function addMessageToChat(messageData) {
             readReceiptElement.className = 'read-receipt';
             readReceiptElement.innerHTML = '<i class="fas fa-check"></i>'; // Default to sent but not read
             readReceiptElement.title = 'Sent';
-            messageElement.appendChild(readReceiptElement);
+            metaContainer.appendChild(readReceiptElement);
             
             // Update read receipt if we have that information
             if (readReceipts[messageData.id]) {
                 updateReadReceiptDisplay(messageData.id, readReceipts[messageData.id]);
             }
         }
+        
+        messageElement.appendChild(metaContainer);
         
         // Add edit/delete controls if message is from current user and not deleted
         if (senderName === currentUsername && !messageData.deleted && messageData.id) {
@@ -913,7 +919,12 @@ function updateReadReceiptDisplay(messageId, readByUsers) {
     if (!readReceiptElement) {
         readReceiptElement = document.createElement('div');
         readReceiptElement.className = 'read-receipt';
-        messageElement.appendChild(readReceiptElement);
+        const metaContainer = messageElement.querySelector('.message-meta');
+        if (metaContainer) {
+            metaContainer.appendChild(readReceiptElement);
+        } else {
+            messageElement.appendChild(readReceiptElement);
+        }
     }
     
     // Filter out current user

@@ -128,7 +128,15 @@ button:hover {
     font-size: 0.8em;
     color: #666;
     margin-top: 5px;
-    text-align: right;
+    display: inline-block;
+}
+
+.message-meta {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 5px;
+    margin-top: 5px;
 }
 
 .message.sent {
@@ -420,11 +428,8 @@ button:hover {
 .read-receipt {
     font-size: 0.8em;
     color: #666;
-    margin-top: 5px;
-    text-align: right;
-    position: absolute;
-    bottom: 5px;
-    right: 10px;
+    display: inline-flex;
+    align-items: center;
 }
 
 .message.sent .read-receipt {
