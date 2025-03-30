@@ -1,7 +1,7 @@
 // Get the backend URL from environment variable or use localhost as fallback
 const BACKEND_URL = window.location.hostname === 'localhost' 
   ? 'http://localhost:3000'
-  : 'https://chat-app-backend-9a5t.onrender.com';
+  : 'https://chat-app-backend-ybjt.onrender.com';
 
 // Global variables
 let socket = null;
@@ -95,7 +95,7 @@ function connectToServer(callback) {
     // Try to use production URL if available, fallback to localhost for development
     const serverUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
         ? 'http://localhost:3000' 
-        : 'https://chat-app-backend-9a5t.onrender.com';
+        : 'https://chat-app-backend-ybjt.onrender.com';
         
     console.log('Connecting to server at:', serverUrl);
     
@@ -116,14 +116,49 @@ function connectToServer(callback) {
     
     // Create socket connection
     try {
+        // First try to connect without specifying transports
         socket = io(serverUrl, {
             reconnectionAttempts: 5,
             reconnectionDelay: 1000,
             reconnectionDelayMax: 5000,
             timeout: 20000,
-            transports: ['websocket', 'polling'],
-            forceNew: true // Create a fresh connection
+            forceNew: true, // Create a fresh connection
+            autoConnect: true,
+            path: '/socket.io' // Default Socket.io path
         });
+        
+        // Add a timeout to switch to polling if websocket fails
+        setTimeout(() => {
+            if (!socketConnected) {
+                console.log('WebSocket connection failed, trying polling transport...');
+                if (debugInfo) {
+                    debugInfo.textContent = 'Trying polling transport...';
+                }
+                
+                // Disconnect current socket
+                if (socket) {
+                    try {
+                        socket.disconnect();
+                    } catch (e) {
+                        console.error('Error disconnecting socket:', e);
+                    }
+                }
+                
+                // Try with polling transport only
+                socket = io(serverUrl, {
+                    reconnectionAttempts: 5,
+                    reconnectionDelay: 1000,
+                    reconnectionDelayMax: 5000,
+                    timeout: 20000,
+                    forceNew: true,
+                    transports: ['polling'],
+                    path: '/socket.io'
+                });
+                
+                // Setup socket event handlers again
+                setupSocketEvents(callback);
+            }
+        }, 5000); // Wait 5 seconds before trying polling
         
         // Setup socket event handlers
         setupSocketEvents(callback);
