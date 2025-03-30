@@ -4,7 +4,7 @@ const BACKEND_URL = window.location.hostname === 'localhost'
   : 'https://chat-app-backend-ybjt.onrender.com';
 
 // Global variables
-let socket;
+let socket = null;
 let currentUsername = localStorage.getItem('username') || '';
 let typingTimeout = null;
 let lastTypingStatus = false;
@@ -27,233 +27,71 @@ function addMessage(data) {
     addMessageToChat(data);
 }
 
-// Connection event handlers
-socket.on('connect', () => {
-    console.log('Connected to server');
-    showStatus('Connected to chat server', 'success');
+// Initialize when the document is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('DOM loaded - initializing app');
     
-    // If user was previously logged in, rejoin automatically
-    if (currentUsername) {
-        socket.emit('join', currentUsername);
-        showChat();
-    }
+    // Connect to the server first
+    connectToServer();
+    
+    // Set up event listeners only after DOM is loaded
+    setupEventListeners();
+    
+    // Show login form initially
+    showLogin();
 });
 
-socket.on('connect_error', (error) => {
-    console.error('Connection error:', error);
-    showStatus('Connection error. Please try again later.', 'error');
-});
-
-socket.on('disconnect', () => {
-    console.log('Disconnected from server');
-    showStatus('Disconnected from chat server. Trying to reconnect...', 'warning');
-});
-
-// Show status message
-function showStatus(message, type = 'info') {
-    const statusContainer = document.getElementById('status-container');
-    if (!statusContainer) return;
+// Setup all event listeners
+function setupEventListeners() {
+    console.log('Setting up event listeners');
     
-    const statusMessage = document.createElement('div');
-    statusMessage.className = `status-message ${type}`;
-    statusMessage.textContent = message;
-    statusContainer.appendChild(statusMessage);
-    
-    // Remove after 5 seconds
-    setTimeout(() => {
-        statusMessage.remove();
-    }, 5000);
-}
-
-// Update user list
-function updateUserList(users) {
-    const userList = document.querySelector('.user-list');
-    const userCount = document.querySelector('.user-list-header span');
-    
-    if (userList && userCount) {
-        userList.innerHTML = '';
-        userCount.textContent = users.length;
-        
-        users.forEach(username => {
-            const userItem = document.createElement('div');
-            userItem.className = 'user-item';
-            userItem.textContent = username;
-            
-            // Highlight current user
-            if (username === currentUsername) {
-                userItem.textContent += ' (you)';
-                userItem.classList.add('current-user');
-            }
-            
-            userList.appendChild(userItem);
+    // Login form submit
+    const loginForm = document.getElementById('login-form');
+    if (loginForm) {
+        loginForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            console.log('Login form submitted');
+            const username = document.getElementById('username').value.trim();
+            joinChat(username);
         });
     }
-}
-
-// Show chat interface
-function showChat() {
-    loginContainer.classList.add('hidden');
-    chatContainer.classList.remove('hidden');
-    userDisplay.textContent = `Logged in as: ${currentUsername}`;
-    messageInput.focus();
-}
-
-// Join chat function
-function joinChat(username, reconnect = false) {
-    if (!socket || !socket.connected) {
-        console.error('Socket not connected when trying to join chat');
-        showStatus('Not connected to server. Please try again.', 'error');
-        return;
+    
+    // Send message on form submit
+    const messageForm = document.getElementById('message-form');
+    if (messageForm) {
+        messageForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            sendMessage();
+        });
     }
     
-    if (!username || username.trim() === '') {
-        alert('Please enter a username');
-        return;
-    }
-    
-    console.log('Joining chat with username:', username);
-    
-    // Store username for reconnection
-    currentUsername = username;
-    localStorage.setItem('username', username);
-    
-    // Emit join event
-    socket.emit('join', { username });
-    
-    // Show chat interface
-    showChat();
-    
-    console.log('Chat interface should be showing now');
-}
-
-// Handle typing status
-function handleTyping() {
+    // Send message on Enter key (without Shift)
     const messageInput = document.getElementById('message-input');
-    if (!messageInput) return;
-    
-    const isTyping = messageInput.value.length > 0;
-    
-    // Clear existing timeout
-    if (typingTimeout) {
-        clearTimeout(typingTimeout);
-    }
-    
-    // Only emit if typing status has changed and socket is connected
-    if (socket && socket.connected && isTyping !== lastTypingStatus) {
-        lastTypingStatus = isTyping;
-        socket.emit('typing', isTyping);
-    }
-    
-    // Set new timeout to stop typing after 2 seconds of no input
-    if (isTyping) {
-        typingTimeout = setTimeout(() => {
-            lastTypingStatus = false;
-            if (socket && socket.connected) {
-                socket.emit('typing', false);
+    if (messageInput) {
+        messageInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
             }
-        }, 2000);
-    }
-}
-
-// Send message function
-function sendMessage() {
-    const messageInput = document.getElementById('message-input');
-    if (!messageInput) return;
-    
-    const message = messageInput.value.trim();
-    
-    if (!socket || !socket.connected) {
-        showStatus('Not connected to server. Please try again.', 'error');
-        return;
-    }
-    
-    if (message) {
-        socket.emit('sendMessage', { text: message });
-        messageInput.value = '';
+        });
         
-        // Reset typing status
-        lastTypingStatus = false;
-        socket.emit('typing', false);
+        // Message input typing events
+        messageInput.addEventListener('input', handleTyping);
+        messageInput.addEventListener('touchstart', handleTyping);
+        messageInput.addEventListener('touchend', handleTyping);
     }
-}
-
-// Socket event handlers
-socket.on('message', addMessage);
-socket.on('userJoined', addMessage);
-socket.on('userLeft', addMessage);
-socket.on('userList', updateUserList);
-
-// Handle message history
-socket.on('messageHistory', (messages) => {
-    // Clear existing messages
-    messagesContainer.innerHTML = '';
-    // Add all messages from history
-    messages.forEach(addMessage);
-});
-
-// Handle typing status updates
-socket.on('typingStatus', (data) => {
-    const typingDiv = document.querySelector('.typing-status');
-    const chatInput = document.querySelector('.chat-input');
-    
-    if (data.users.length > 0) {
-        const users = data.users.filter(user => user !== currentUsername);
-        if (users.length > 0) {
-            const message = users.length === 1
-                ? `${users[0]} is typing...`
-                : `${users.join(', ')} are typing...`;
-                
-            if (typingDiv) {
-                typingDiv.textContent = message;
-            } else {
-                const newTypingDiv = document.createElement('div');
-                newTypingDiv.className = 'typing-status';
-                newTypingDiv.textContent = message;
-                chatInput.appendChild(newTypingDiv);
-            }
-            return;
-        }
-    }
-    
-    // Remove typing status if no one is typing
-    if (typingDiv) {
-        typingDiv.remove();
-    }
-});
-
-// Clear typing status when disconnected
-socket.on('disconnect', () => {
-    const typingDiv = document.querySelector('.typing-status');
-    if (typingDiv) {
-        typingDiv.remove();
-    }
-    lastTypingStatus = false;
-    console.log('Disconnected from server');
-    showStatus('Disconnected from chat server. Trying to reconnect...', 'warning');
-});
-
-// Show login form and hide chat
-function showLogin() {
-    document.getElementById('login-container').style.display = 'flex';
-    document.getElementById('chat-container').style.display = 'none';
-}
-
-// Show chat and hide login form
-function showChat() {
-    document.getElementById('login-container').style.display = 'none';
-    document.getElementById('chat-container').style.display = 'flex';
-    document.getElementById('message-input')?.focus();
 }
 
 // Connect to Socket.io server
 function connectToServer() {
     // Try to use production URL if available, fallback to localhost for development
-    const serverUrl = location.hostname === 'localhost' || location.hostname === '127.0.0.1' 
+    const serverUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
         ? 'http://localhost:3000' 
         : 'https://chat-app-backend-9a5t.onrender.com';
         
     console.log('Connecting to server at:', serverUrl);
     
+    // Create socket connection
     socket = io(serverUrl, {
         reconnectionAttempts: 5,
         reconnectionDelay: 1000,
@@ -262,6 +100,19 @@ function connectToServer() {
         transports: ['websocket', 'polling']
     });
 
+    // Setup socket event handlers
+    setupSocketEvents();
+}
+
+// Setup all socket event handlers
+function setupSocketEvents() {
+    if (!socket) {
+        console.error('Cannot setup events - socket not initialized');
+        return;
+    }
+    
+    console.log('Setting up socket events');
+
     // Connection successful
     socket.on('connect', () => {
         console.log('Connected to server');
@@ -269,6 +120,7 @@ function connectToServer() {
         
         // If we have a username, automatically join the chat
         if (currentUsername) {
+            console.log('Auto-joining with username:', currentUsername);
             joinChat(currentUsername, true);
         }
     });
@@ -304,21 +156,26 @@ function connectToServer() {
 
     // User list update
     socket.on('userList', (users) => {
+        console.log('Received user list:', users);
         updateUserList(users);
     });
 
     // Receive message
     socket.on('message', (messageData) => {
+        console.log('Received message:', messageData);
         addMessageToChat(messageData);
     });
 
     // Receive message history
     socket.on('messageHistory', (messages) => {
+        console.log('Received message history, count:', messages.length);
         const messagesContainer = document.querySelector('.chat-messages');
-        messagesContainer.innerHTML = '';
-        messages.forEach(message => {
-            addMessageToChat(message);
-        });
+        if (messagesContainer) {
+            messagesContainer.innerHTML = '';
+            messages.forEach(message => {
+                addMessageToChat(message);
+            });
+        }
     });
 
     // Handle typing status updates
@@ -326,7 +183,7 @@ function connectToServer() {
         const typingDiv = document.querySelector('.typing-status');
         const chatInput = document.querySelector('.chat-input');
         
-        if (data.users.length > 0) {
+        if (data.users && data.users.length > 0) {
             const users = data.users.filter(user => user !== currentUsername);
             if (users.length > 0) {
                 const message = users.length === 1
@@ -335,7 +192,7 @@ function connectToServer() {
                     
                 if (typingDiv) {
                     typingDiv.textContent = message;
-                } else {
+                } else if (chatInput) {
                     const newTypingDiv = document.createElement('div');
                     newTypingDiv.className = 'typing-status';
                     newTypingDiv.textContent = message;
@@ -389,10 +246,175 @@ function connectToServer() {
     });
 }
 
+// Show login form and hide chat
+function showLogin() {
+    console.log('Showing login form');
+    const loginContainer = document.getElementById('login-container');
+    const chatContainer = document.getElementById('chat-container');
+    
+    if (loginContainer) loginContainer.style.display = 'flex';
+    if (chatContainer) chatContainer.style.display = 'none';
+}
+
+// Show chat and hide login form
+function showChat() {
+    console.log('Showing chat window');
+    const loginContainer = document.getElementById('login-container');
+    const chatContainer = document.getElementById('chat-container');
+    const messageInput = document.getElementById('message-input');
+    const userDisplay = document.getElementById('user-display');
+    
+    if (loginContainer) loginContainer.style.display = 'none';
+    if (chatContainer) chatContainer.style.display = 'flex';
+    if (messageInput) messageInput.focus();
+    if (userDisplay) userDisplay.textContent = `Logged in as: ${currentUsername}`;
+    
+    console.log('Display states:', {
+        loginContainer: loginContainer ? loginContainer.style.display : 'not found',
+        chatContainer: chatContainer ? chatContainer.style.display : 'not found'
+    });
+}
+
+// Join chat room
+function joinChat(username, reconnect = false) {
+    if (!socket || !socket.connected) {
+        console.error('Socket not connected when trying to join chat');
+        showStatus('Not connected to server. Please try again.', 'error');
+        return;
+    }
+    
+    if (!username || username.trim() === '') {
+        alert('Please enter a username');
+        return;
+    }
+    
+    console.log('Joining chat with username:', username);
+    
+    // Store username for reconnection
+    currentUsername = username;
+    localStorage.setItem('username', username);
+    
+    // Emit join event
+    socket.emit('join', { username });
+    
+    // Show chat interface
+    showChat();
+    
+    console.log('Chat interface should be showing now');
+}
+
+// Show status message
+function showStatus(message, type = 'info') {
+    console.log(`Status: ${message} (${type})`);
+    const statusContainer = document.getElementById('status-container');
+    if (!statusContainer) {
+        console.error('Status container not found');
+        return;
+    }
+    
+    const statusMessage = document.createElement('div');
+    statusMessage.className = `status-message ${type}`;
+    statusMessage.textContent = message;
+    statusContainer.appendChild(statusMessage);
+    
+    // Remove after 5 seconds
+    setTimeout(() => {
+        if (statusMessage.parentNode) {
+            statusMessage.remove();
+        }
+    }, 5000);
+}
+
+// Update user list
+function updateUserList(users) {
+    const userList = document.querySelector('.user-list');
+    const userCount = document.querySelector('.user-list-header span');
+    
+    if (!userList || !userCount) {
+        console.error('User list elements not found');
+        return;
+    }
+    
+    userList.innerHTML = '';
+    userCount.textContent = users.length;
+    
+    users.forEach(username => {
+        const userItem = document.createElement('div');
+        userItem.className = 'user-item';
+        userItem.textContent = username;
+        
+        // Highlight current user
+        if (username === currentUsername) {
+            userItem.textContent += ' (you)';
+            userItem.classList.add('current-user');
+        }
+        
+        userList.appendChild(userItem);
+    });
+}
+
+// Handle typing status
+function handleTyping() {
+    const messageInput = document.getElementById('message-input');
+    if (!messageInput) return;
+    
+    const isTyping = messageInput.value.length > 0;
+    
+    // Clear existing timeout
+    if (typingTimeout) {
+        clearTimeout(typingTimeout);
+    }
+    
+    // Only emit if typing status has changed and socket is connected
+    if (socket && socket.connected && isTyping !== lastTypingStatus) {
+        lastTypingStatus = isTyping;
+        socket.emit('typing', isTyping);
+    }
+    
+    // Set new timeout to stop typing after 2 seconds of no input
+    if (isTyping) {
+        typingTimeout = setTimeout(() => {
+            lastTypingStatus = false;
+            if (socket && socket.connected) {
+                socket.emit('typing', false);
+            }
+        }, 2000);
+    }
+}
+
+// Send message function
+function sendMessage() {
+    const messageInput = document.getElementById('message-input');
+    if (!messageInput) {
+        console.error('Message input not found');
+        return;
+    }
+    
+    const message = messageInput.value.trim();
+    
+    if (!socket || !socket.connected) {
+        showStatus('Not connected to server. Please try again.', 'error');
+        return;
+    }
+    
+    if (message) {
+        console.log('Sending message:', message);
+        socket.emit('sendMessage', { text: message });
+        messageInput.value = '';
+        
+        // Reset typing status
+        lastTypingStatus = false;
+        socket.emit('typing', false);
+    }
+}
+
 // Add message to chat
 function addMessageToChat(messageData) {
     const messagesContainer = document.querySelector('.chat-messages');
-    if (!messagesContainer) return;
+    if (!messagesContainer) {
+        console.error('Messages container not found');
+        return;
+    }
     
     const messageElement = document.createElement('div');
     
@@ -613,42 +635,4 @@ function deleteMessage(messageId) {
             messageId: messageId
         });
     }
-}
-
-// Initialize when the document is loaded
-document.addEventListener('DOMContentLoaded', () => {
-    // Connect to the server
-    connectToServer();
-    
-    // Login form submit
-    document.getElementById('login-form')?.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const username = document.getElementById('username').value.trim();
-        joinChat(username);
-    });
-    
-    // Send message on form submit
-    document.getElementById('message-form')?.addEventListener('submit', (e) => {
-        e.preventDefault();
-        sendMessage();
-    });
-    
-    // Send message on Enter key (without Shift)
-    document.getElementById('message-input')?.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage();
-        }
-    });
-    
-    // Message input typing events
-    const messageInput = document.getElementById('message-input');
-    if (messageInput) {
-        messageInput.addEventListener('input', handleTyping);
-        messageInput.addEventListener('touchstart', handleTyping);
-        messageInput.addEventListener('touchend', handleTyping);
-    }
-    
-    // Show login form initially
-    showLogin();
-}); 
+} 
