@@ -1,0 +1,11 @@
+{
+  "name": "chat-app-frontend",
+  "version": "1.0.0",
+  "description": "Frontend for real-time chat application",
+  "scripts": {
+    "start": "serve ."
+  },
+  "dependencies": {
+    "serve": "^14.2.1"
+  }
+} 

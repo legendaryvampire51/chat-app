@@ -1,4 +1,9 @@
-const socket = io('http://localhost:3000');
+// Get the backend URL from environment variable or use localhost as fallback
+const BACKEND_URL = window.location.hostname === 'localhost' 
+  ? 'http://localhost:3000'
+  : 'https://chat-app-backend.onrender.com';
+
+const socket = io(BACKEND_URL);
 let currentUsername = '';
 
 // DOM Elements
