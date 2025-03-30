@@ -268,4 +268,105 @@ body {
     .chat-container {
         margin-top: 60px;
     }
+}
+
+.message {
+    max-width: 70%;
+    padding: 12px 15px;
+    border-radius: 15px;
+    margin-bottom: 10px;
+    position: relative;
+    animation: fadeIn 0.3s ease-in;
+    background-color: var(--message-bg);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.message.own {
+    background-color: var(--message-own-bg);
+    margin-left: auto;
+    border-bottom-right-radius: 5px;
+}
+
+.message:not(.own) {
+    border-bottom-left-radius: 5px;
+}
+
+.message .username {
+    font-weight: bold;
+    font-size: 0.9em;
+    margin-bottom: 5px;
+    color: var(--primary-color);
+}
+
+.message .content {
+    word-wrap: break-word;
+    line-height: 1.4;
+}
+
+.message .timestamp {
+    font-size: 0.8em;
+    color: var(--secondary-color);
+    margin-top: 5px;
+    text-align: right;
+}
+
+.message .edited-tag {
+    font-size: 0.8em;
+    color: var(--secondary-color);
+    margin-left: 5px;
+}
+
+.system-message {
+    text-align: center;
+    color: var(--secondary-color);
+    font-style: italic;
+    margin: 10px 0;
+    padding: 5px 10px;
+    background-color: rgba(0, 0, 0, 0.05);
+    border-radius: 10px;
+}
+
+.status-message {
+    padding: 10px;
+    margin: 10px 0;
+    border-radius: 5px;
+    text-align: center;
+    font-style: italic;
+    animation: fadeIn 0.3s ease-in;
+}
+
+.status-message.success {
+    background-color: var(--success-color);
+    color: white;
+}
+
+.status-message.error {
+    background-color: var(--danger-color);
+    color: white;
+}
+
+.status-message.warning {
+    background-color: var(--warning-color);
+    color: black;
+}
+
+.status-message.info {
+    background-color: var(--info-color);
+    color: white;
+}
+
+.voice-message {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.voice-message audio {
+    max-width: 200px;
+    border-radius: 20px;
+}
+
+.voice-message i {
+    color: var(--primary-color);
+    font-size: 1.2em;
 } 
