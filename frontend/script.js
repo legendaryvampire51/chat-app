@@ -1,9 +1,16 @@
 // Get the backend URL from environment variable or use localhost as fallback
 const BACKEND_URL = window.location.hostname === 'localhost' 
   ? 'http://localhost:3000'
-  : 'https://chat-app-backend.onrender.com';
+  : 'https://chat-app-backend-ybjt.onrender.com';
 
-const socket = io(BACKEND_URL);
+// Initialize socket with connection options
+const socket = io(BACKEND_URL, {
+    reconnection: true,
+    reconnectionAttempts: 5,
+    reconnectionDelay: 1000,
+    transports: ['websocket', 'polling']
+});
+
 let currentUsername = '';
 
 // DOM Elements
@@ -13,12 +20,47 @@ const messagesContainer = document.getElementById('messages');
 const messageInput = document.getElementById('message-input');
 const userDisplay = document.getElementById('user-display');
 
+// Connection event handlers
+socket.on('connect', () => {
+    console.log('Connected to server');
+    showStatus('Connected to chat server', 'success');
+});
+
+socket.on('connect_error', (error) => {
+    console.error('Connection error:', error);
+    showStatus('Connection error. Please try again later.', 'error');
+});
+
+socket.on('disconnect', () => {
+    console.log('Disconnected from server');
+    showStatus('Disconnected from chat server. Trying to reconnect...', 'warning');
+});
+
+// Show status message to user
+function showStatus(message, type) {
+    const statusDiv = document.createElement('div');
+    statusDiv.className = `status-message ${type}`;
+    statusDiv.textContent = message;
+    messagesContainer.appendChild(statusDiv);
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    
+    // Remove status message after 5 seconds
+    setTimeout(() => {
+        statusDiv.remove();
+    }, 5000);
+}
+
 // Join chat function
 function joinChat() {
     const usernameInput = document.getElementById('username');
     const username = usernameInput.value.trim();
     
     if (username) {
+        if (!socket.connected) {
+            showStatus('Trying to connect to server...', 'warning');
+            return;
+        }
+        
         currentUsername = username;
         socket.emit('join', username);
         
@@ -35,6 +77,11 @@ function joinChat() {
 function sendMessage() {
     const message = messageInput.value.trim();
     if (message) {
+        if (!socket.connected) {
+            showStatus('Cannot send message: Not connected to server', 'error');
+            return;
+        }
+        
         socket.emit('message', message);
         messageInput.value = '';
     }
