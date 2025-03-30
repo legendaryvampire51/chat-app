@@ -28,9 +28,7 @@
                 <div class="online-count"></div>
             </div>
 
-            <div class="chat-messages"></div>
-
-            <div class="typing-indicator"></div>
+            <div class="chat-messages" id="messages"></div>
 
             <div class="chat-input">
                 <button id="voiceRecordBtn" class="voice-record-btn">
@@ -52,7 +50,6 @@
         <div id="emojiPicker" class="emoji-picker" style="display: none;">
             <div class="emoji-picker-content">
                 <div class="emoji-list">
-                    <!-- Common emojis -->
                     <span class="emoji-item" data-emoji="👍">👍</span>
                     <span class="emoji-item" data-emoji="❤️">❤️</span>
                     <span class="emoji-item" data-emoji="😊">😊</span>
@@ -64,15 +61,15 @@
                 </div>
             </div>
         </div>
-    </div>
 
-    <!-- Message Context Menu -->
-    <div id="messageContextMenu" class="context-menu" style="display: none;">
-        <ul>
-            <li data-action="edit"><i class="fas fa-edit"></i> Edit</li>
-            <li data-action="delete"><i class="fas fa-trash"></i> Delete</li>
-            <li data-action="react"><i class="fas fa-smile"></i> React</li>
-        </ul>
+        <!-- Message Context Menu -->
+        <div id="messageContextMenu" class="context-menu" style="display: none;">
+            <ul>
+                <li data-action="edit"><i class="fas fa-edit"></i> Edit</li>
+                <li data-action="delete"><i class="fas fa-trash"></i> Delete</li>
+                <li data-action="react"><i class="fas fa-smile"></i> React</li>
+            </ul>
+        </div>
     </div>
 
     <audio id="notificationSound" src="notification.mp3" preload="auto"></audio>

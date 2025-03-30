@@ -72,7 +72,8 @@ socket.on('connect', () => {
     // If user was previously logged in, rejoin automatically
     if (currentUsername) {
         socket.emit('join', currentUsername);
-        showChat();
+        document.getElementById('login').style.display = 'none';
+        document.getElementById('chat').style.display = 'flex';
     }
 });
 
@@ -138,7 +139,13 @@ function joinChat() {
         currentUsername = username;
         localStorage.setItem('username', username);
         socket.emit('join', username);
-        showChat();
+        
+        // Hide login and show chat
+        document.getElementById('login').style.display = 'none';
+        document.getElementById('chat').style.display = 'flex';
+        
+        // Focus on message input
+        document.getElementById('messageInput').focus();
     } else {
         alert('Please enter a username');
     }
