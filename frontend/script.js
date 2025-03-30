@@ -9,6 +9,9 @@ let currentUsername = localStorage.getItem('username') || '';
 let typingTimeout = null;
 let lastTypingStatus = false;
 let activeMessageEdit = null; // Track which message is being edited
+let socketConnected = false; // Track socket connection state
+let connectionRetries = 0;
+const MAX_CONNECTION_RETRIES = 3;
 
 // Function to add a message to the chat
 function addMessage(data) {
@@ -18,6 +21,12 @@ function addMessage(data) {
 // Initialize when the document is loaded
 document.addEventListener('DOMContentLoaded', () => {
     console.log('DOM loaded - initializing app');
+    
+    // Update debug info
+    const debugInfo = document.getElementById('debug-info');
+    if (debugInfo) {
+        debugInfo.textContent = 'Initializing connection...';
+    }
     
     // Connect to the server first
     connectToServer();
@@ -40,6 +49,17 @@ function setupEventListeners() {
             e.preventDefault();
             console.log('Login form submitted');
             const username = document.getElementById('username').value.trim();
+            
+            if (!socketConnected) {
+                // If socket is not connected, attempt to reconnect
+                showStatus('Connecting to server...', 'warning');
+                connectToServer(() => {
+                    // Try joining after connection attempt
+                    joinChat(username);
+                });
+                return;
+            }
+            
             joinChat(username);
         });
     }
@@ -71,7 +91,7 @@ function setupEventListeners() {
 }
 
 // Connect to Socket.io server
-function connectToServer() {
+function connectToServer(callback) {
     // Try to use production URL if available, fallback to localhost for development
     const serverUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
         ? 'http://localhost:3000' 
@@ -79,21 +99,56 @@ function connectToServer() {
         
     console.log('Connecting to server at:', serverUrl);
     
+    // Update debug info
+    const debugInfo = document.getElementById('debug-info');
+    if (debugInfo) {
+        debugInfo.textContent = 'Connecting to: ' + serverUrl;
+    }
+    
+    // If socket already exists, disconnect it
+    if (socket) {
+        try {
+            socket.disconnect();
+        } catch (e) {
+            console.error('Error disconnecting socket:', e);
+        }
+    }
+    
     // Create socket connection
-    socket = io(serverUrl, {
-        reconnectionAttempts: 5,
-        reconnectionDelay: 1000,
-        reconnectionDelayMax: 5000,
-        timeout: 20000,
-        transports: ['websocket', 'polling']
-    });
-
-    // Setup socket event handlers
-    setupSocketEvents();
+    try {
+        socket = io(serverUrl, {
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000,
+            timeout: 20000,
+            transports: ['websocket', 'polling'],
+            forceNew: true // Create a fresh connection
+        });
+        
+        // Setup socket event handlers
+        setupSocketEvents(callback);
+    } catch (error) {
+        console.error('Error creating socket connection:', error);
+        socketConnected = false;
+        showStatus('Failed to connect: ' + error.message, 'error');
+        
+        if (debugInfo) {
+            debugInfo.textContent = 'Connection Error: ' + error.message;
+        }
+        
+        // Try to reconnect if under max retries
+        if (connectionRetries < MAX_CONNECTION_RETRIES) {
+            connectionRetries++;
+            setTimeout(() => {
+                console.log(`Retrying connection (${connectionRetries}/${MAX_CONNECTION_RETRIES})...`);
+                connectToServer(callback);
+            }, 2000); // Wait 2 seconds before retry
+        }
+    }
 }
 
 // Setup all socket event handlers
-function setupSocketEvents() {
+function setupSocketEvents(callback) {
     if (!socket) {
         console.error('Cannot setup events - socket not initialized');
         return;
@@ -104,19 +159,41 @@ function setupSocketEvents() {
     // Connection successful
     socket.on('connect', () => {
         console.log('Connected to server');
+        socketConnected = true;
+        connectionRetries = 0;
         showStatus('Connected to chat server', 'success');
+        
+        // Update debug info
+        const debugInfo = document.getElementById('debug-info');
+        if (debugInfo) {
+            debugInfo.textContent = 'Connected ✓';
+            debugInfo.style.backgroundColor = 'green';
+        }
         
         // If we have a username, automatically join the chat
         if (currentUsername) {
             console.log('Auto-joining with username:', currentUsername);
             joinChat(currentUsername, true);
         }
+        
+        // Call the callback if provided (for reconnection scenarios)
+        if (typeof callback === 'function') {
+            callback();
+        }
     });
 
     // Connection failed
     socket.on('connect_error', (error) => {
         console.error('Connection error:', error);
-        showStatus('Error connecting to chat server', 'error');
+        socketConnected = false;
+        showStatus('Error connecting to chat server: ' + error.message, 'error');
+        
+        // Update debug info
+        const debugInfo = document.getElementById('debug-info');
+        if (debugInfo) {
+            debugInfo.textContent = 'Connection Error: ' + error.message;
+            debugInfo.style.backgroundColor = 'red';
+        }
     });
 
     // Disconnected
@@ -126,8 +203,16 @@ function setupSocketEvents() {
             typingDiv.remove();
         }
         lastTypingStatus = false;
+        socketConnected = false;
         console.log('Disconnected from server');
         showStatus('Disconnected from chat server. Trying to reconnect...', 'warning');
+        
+        // Update debug info
+        const debugInfo = document.getElementById('debug-info');
+        if (debugInfo) {
+            debugInfo.textContent = 'Disconnected';
+            debugInfo.style.backgroundColor = 'orange';
+        }
     });
 
     // Reconnecting
@@ -145,13 +230,26 @@ function setupSocketEvents() {
     // User list update
     socket.on('userList', (users) => {
         console.log('Received user list:', users);
-        updateUserList(users);
+        // Handle both array and object with users property
+        const userArray = Array.isArray(users) ? users : (users && users.users ? users.users : []);
+        updateUserList(userArray);
     });
 
     // Receive message
     socket.on('message', (messageData) => {
         console.log('Received message:', messageData);
         addMessageToChat(messageData);
+    });
+
+    // Legacy event handlers for backward compatibility
+    socket.on('userJoined', (data) => {
+        console.log('User joined (legacy event):', data);
+        addMessageToChat(data);
+    });
+    
+    socket.on('userLeft', (data) => {
+        console.log('User left (legacy event):', data);
+        addMessageToChat(data);
     });
 
     // Receive message history
@@ -304,10 +402,30 @@ function showChat() {
 
 // Join chat room
 function joinChat(username, reconnect = false) {
-    if (!socket || !socket.connected) {
+    if (!socket) {
+        console.error('Socket not initialized');
+        alert('Connection error: Socket not initialized. Refreshing the page may help.');
+        return;
+    }
+    
+    if (!socketConnected) {
         console.error('Socket not connected when trying to join chat');
-        alert('Debug: Socket not connected! Please refresh the page.');
-        showStatus('Not connected to server. Please try again.', 'error');
+        const debugInfo = document.getElementById('debug-info');
+        if (debugInfo) {
+            debugInfo.textContent = 'Error: Socket not connected!';
+            debugInfo.style.backgroundColor = 'red';
+        }
+        
+        // Try to reconnect
+        showStatus('Not connected to server. Attempting to reconnect...', 'warning');
+        connectToServer(() => {
+            // Retry joining after connection
+            if (socketConnected) {
+                joinChat(username, reconnect);
+            } else {
+                showStatus('Could not connect to server. Please refresh the page.', 'error');
+            }
+        });
         return;
     }
     
@@ -317,7 +435,6 @@ function joinChat(username, reconnect = false) {
     }
     
     console.log('Joining chat with username:', username);
-    alert('Debug: Attempting to join chat with username: ' + username);
     
     try {
         // Store username for reconnection
@@ -331,9 +448,16 @@ function joinChat(username, reconnect = false) {
         showChat();
         
         console.log('Chat interface should be showing now');
+        
+        // Update debug info
+        const debugInfo = document.getElementById('debug-info');
+        if (debugInfo) {
+            debugInfo.textContent = 'Joined as: ' + username;
+            debugInfo.style.backgroundColor = 'green';
+        }
     } catch (error) {
         console.error('Error in joinChat:', error);
-        alert('Debug error: ' + error.message);
+        alert('Error joining chat: ' + error.message);
     }
 }
 
