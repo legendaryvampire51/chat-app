@@ -11,7 +11,8 @@ const socket = io(BACKEND_URL, {
     transports: ['websocket', 'polling']
 });
 
-let currentUsername = '';
+let currentUsername = localStorage.getItem('chatUsername') || '';
+let typingTimeout = null;
 
 // DOM Elements
 const loginContainer = document.getElementById('login-container');
@@ -20,10 +21,21 @@ const messagesContainer = document.getElementById('messages');
 const messageInput = document.getElementById('message-input');
 const userDisplay = document.getElementById('user-display');
 
+// Create user list container
+const userListContainer = document.createElement('div');
+userListContainer.className = 'user-list-container';
+chatContainer.appendChild(userListContainer);
+
 // Connection event handlers
 socket.on('connect', () => {
     console.log('Connected to server');
     showStatus('Connected to chat server', 'success');
+    
+    // If user was previously logged in, rejoin automatically
+    if (currentUsername) {
+        socket.emit('join', currentUsername);
+        showChat();
+    }
 });
 
 socket.on('connect_error', (error) => {
@@ -50,6 +62,30 @@ function showStatus(message, type) {
     }, 5000);
 }
 
+// Update user list display
+function updateUserList(data) {
+    userListContainer.innerHTML = `
+        <div class="user-list-header">
+            Online Users (${data.count})
+        </div>
+        <div class="user-list">
+            ${data.users.map(username => `
+                <div class="user-item">
+                    ${username === currentUsername ? `${username} (You)` : username}
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+// Show chat interface
+function showChat() {
+    loginContainer.classList.add('hidden');
+    chatContainer.classList.remove('hidden');
+    userDisplay.textContent = `Logged in as: ${currentUsername}`;
+    messageInput.focus();
+}
+
 // Join chat function
 function joinChat() {
     const usernameInput = document.getElementById('username');
@@ -62,15 +98,28 @@ function joinChat() {
         }
         
         currentUsername = username;
+        localStorage.setItem('chatUsername', username);
         socket.emit('join', username);
-        
-        // Update UI
-        loginContainer.classList.add('hidden');
-        chatContainer.classList.remove('hidden');
-        userDisplay.textContent = `Logged in as: ${username}`;
+        showChat();
     } else {
         alert('Please enter a username');
     }
+}
+
+// Handle typing status
+function handleTyping() {
+    // Clear previous timeout
+    if (typingTimeout) {
+        clearTimeout(typingTimeout);
+    }
+
+    // Emit typing status
+    socket.emit('typing', true);
+
+    // Set new timeout
+    typingTimeout = setTimeout(() => {
+        socket.emit('typing', false);
+    }, 1000);
 }
 
 // Send message function
@@ -84,6 +133,11 @@ function sendMessage() {
         
         socket.emit('message', message);
         messageInput.value = '';
+        // Clear typing status
+        if (typingTimeout) {
+            clearTimeout(typingTimeout);
+            socket.emit('typing', false);
+        }
     }
 }
 
@@ -91,6 +145,8 @@ function sendMessage() {
 messageInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
         sendMessage();
+    } else {
+        handleTyping();
     }
 });
 
@@ -123,4 +179,30 @@ socket.on('userLeft', (data) => {
     systemMessage.textContent = data.message;
     messagesContainer.appendChild(systemMessage);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
+});
+
+socket.on('userList', updateUserList);
+
+// Handle typing status updates
+socket.on('typingStatus', (data) => {
+    const typingDiv = document.querySelector('.typing-status') || document.createElement('div');
+    typingDiv.className = 'typing-status';
+    
+    if (data.users.length > 0) {
+        const users = data.users.filter(user => user !== currentUsername);
+        if (users.length > 0) {
+            typingDiv.textContent = users.length === 1
+                ? `${users[0]} is typing...`
+                : `${users.join(', ')} are typing...`;
+            if (!typingDiv.parentNode) {
+                messagesContainer.appendChild(typingDiv);
+            }
+            return;
+        }
+    }
+    
+    // Remove typing status if no one is typing
+    if (typingDiv.parentNode) {
+        typingDiv.remove();
+    }
 }); 
