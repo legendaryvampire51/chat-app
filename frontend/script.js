@@ -13,6 +13,7 @@ const socket = io(BACKEND_URL, {
 
 let currentUsername = localStorage.getItem('chatUsername') || '';
 let typingTimeout = null;
+let lastTypingStatus = false;
 
 // DOM Elements
 const loginContainer = document.getElementById('login-container');
@@ -25,6 +26,28 @@ const userDisplay = document.getElementById('user-display');
 const userListContainer = document.createElement('div');
 userListContainer.className = 'user-list-container';
 chatContainer.appendChild(userListContainer);
+
+// Function to add a message to the chat
+function addMessage(data) {
+    const messageElement = document.createElement('div');
+    
+    if (data.type === 'system') {
+        messageElement.classList.add('system-message');
+        messageElement.textContent = data.message;
+    } else {
+        messageElement.classList.add('message');
+        messageElement.classList.add(data.username === currentUsername ? 'sent' : 'received');
+        
+        messageElement.innerHTML = `
+            <div class="username">${data.username}</div>
+            <div class="text">${data.message}</div>
+            <div class="timestamp">${new Date(data.timestamp).toLocaleTimeString()}</div>
+        `;
+    }
+    
+    messagesContainer.appendChild(messageElement);
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
 
 // Connection event handlers
 socket.on('connect', () => {
@@ -108,18 +131,13 @@ function joinChat() {
 
 // Handle typing status
 function handleTyping() {
-    // Clear previous timeout
-    if (typingTimeout) {
-        clearTimeout(typingTimeout);
+    const isTyping = messageInput.value.length > 0;
+    
+    // Only emit if typing status has changed
+    if (isTyping !== lastTypingStatus) {
+        lastTypingStatus = isTyping;
+        socket.emit('typing', isTyping);
     }
-
-    // Emit typing status
-    socket.emit('typing', true);
-
-    // Set new timeout
-    typingTimeout = setTimeout(() => {
-        socket.emit('typing', false);
-    }, 1000);
 }
 
 // Send message function
@@ -133,11 +151,8 @@ function sendMessage() {
         
         socket.emit('message', message);
         messageInput.value = '';
-        // Clear typing status
-        if (typingTimeout) {
-            clearTimeout(typingTimeout);
-            socket.emit('typing', false);
-        }
+        lastTypingStatus = false;
+        socket.emit('typing', false);
     }
 }
 
@@ -145,43 +160,25 @@ function sendMessage() {
 messageInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
         sendMessage();
-    } else {
-        handleTyping();
     }
 });
 
+// Handle input changes for typing status
+messageInput.addEventListener('input', handleTyping);
+
 // Socket event handlers
-socket.on('message', (data) => {
-    const messageElement = document.createElement('div');
-    messageElement.classList.add('message');
-    messageElement.classList.add(data.username === currentUsername ? 'sent' : 'received');
-    
-    messageElement.innerHTML = `
-        <div class="username">${data.username}</div>
-        <div class="text">${data.message}</div>
-    `;
-    
-    messagesContainer.appendChild(messageElement);
-    messagesContainer.scrollTop = messagesContainer.scrollHeight;
-});
-
-socket.on('userJoined', (data) => {
-    const systemMessage = document.createElement('div');
-    systemMessage.classList.add('system-message');
-    systemMessage.textContent = data.message;
-    messagesContainer.appendChild(systemMessage);
-    messagesContainer.scrollTop = messagesContainer.scrollHeight;
-});
-
-socket.on('userLeft', (data) => {
-    const systemMessage = document.createElement('div');
-    systemMessage.classList.add('system-message');
-    systemMessage.textContent = data.message;
-    messagesContainer.appendChild(systemMessage);
-    messagesContainer.scrollTop = messagesContainer.scrollHeight;
-});
-
+socket.on('message', addMessage);
+socket.on('userJoined', addMessage);
+socket.on('userLeft', addMessage);
 socket.on('userList', updateUserList);
+
+// Handle message history
+socket.on('messageHistory', (messages) => {
+    // Clear existing messages
+    messagesContainer.innerHTML = '';
+    // Add all messages from history
+    messages.forEach(addMessage);
+});
 
 // Handle typing status updates
 socket.on('typingStatus', (data) => {

@@ -115,6 +115,13 @@ button:hover {
     word-wrap: break-word;
 }
 
+.message .timestamp {
+    font-size: 0.8em;
+    color: #666;
+    margin-top: 5px;
+    text-align: right;
+}
+
 .system-message {
     text-align: center;
     color: #666;

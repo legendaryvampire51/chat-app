@@ -16,11 +16,21 @@ const io = socketIo(server, {
 
 // Store connected users with their socket IDs and usernames
 const users = new Map();
-const typingUsers = new Set();
+const typingUsers = new Map(); // Changed to Map to store timeout IDs
+const messageHistory = []; // Store message history
+const MAX_HISTORY = 50; // Maximum number of messages to store
 
 // Helper function to get active users list
 function getActiveUsers() {
   return Array.from(users.values());
+}
+
+// Helper function to add message to history
+function addToHistory(messageData) {
+  messageHistory.push(messageData);
+  if (messageHistory.length > MAX_HISTORY) {
+    messageHistory.shift(); // Remove oldest message if exceeding limit
+  }
 }
 
 io.on('connection', (socket) => {
@@ -31,10 +41,17 @@ io.on('connection', (socket) => {
     users.set(socket.id, username);
     
     // Broadcast user joined message
-    io.emit('userJoined', {
+    const joinMessage = {
+      type: 'system',
       username: username,
-      message: `${username} has joined the chat`
-    });
+      message: `${username} has joined the chat`,
+      timestamp: new Date().toISOString()
+    };
+    addToHistory(joinMessage);
+    io.emit('userJoined', joinMessage);
+
+    // Send message history to the newly joined user
+    socket.emit('messageHistory', messageHistory);
 
     // Send updated user list to all clients
     io.emit('userList', {
@@ -46,11 +63,14 @@ io.on('connection', (socket) => {
   // Handle chat messages
   socket.on('message', (message) => {
     const username = users.get(socket.id);
-    io.emit('message', {
+    const messageData = {
+      type: 'message',
       username: username,
       message: message,
       timestamp: new Date().toISOString()
-    });
+    };
+    addToHistory(messageData);
+    io.emit('message', messageData);
   });
 
   // Handle typing status
@@ -58,15 +78,28 @@ io.on('connection', (socket) => {
     const username = users.get(socket.id);
     if (!username) return;
 
-    if (isTyping) {
-      typingUsers.add(username);
-    } else {
-      typingUsers.delete(username);
+    // Clear existing timeout for this user if it exists
+    if (typingUsers.has(socket.id)) {
+      clearTimeout(typingUsers.get(socket.id));
     }
 
-    // Broadcast typing status to all other users
+    if (isTyping) {
+      // Set new timeout
+      const timeoutId = setTimeout(() => {
+        typingUsers.delete(socket.id);
+        socket.broadcast.emit('typingStatus', {
+          users: Array.from(typingUsers.keys()).map(id => users.get(id))
+        });
+      }, 2000); // Timeout after 2 seconds of no typing
+
+      typingUsers.set(socket.id, timeoutId);
+    } else {
+      typingUsers.delete(socket.id);
+    }
+
+    // Broadcast current typing status
     socket.broadcast.emit('typingStatus', {
-      users: Array.from(typingUsers)
+      users: Array.from(typingUsers.keys()).map(id => users.get(id))
     });
   });
 
@@ -75,17 +108,31 @@ io.on('connection', (socket) => {
     const username = users.get(socket.id);
     if (username) {
       users.delete(socket.id);
-      typingUsers.delete(username);
       
-      io.emit('userLeft', {
+      // Clear typing status
+      if (typingUsers.has(socket.id)) {
+        clearTimeout(typingUsers.get(socket.id));
+        typingUsers.delete(socket.id);
+      }
+      
+      const leaveMessage = {
+        type: 'system',
         username: username,
-        message: `${username} has left the chat`
-      });
+        message: `${username} has left the chat`,
+        timestamp: new Date().toISOString()
+      };
+      addToHistory(leaveMessage);
+      io.emit('userLeft', leaveMessage);
 
       // Send updated user list
       io.emit('userList', {
         users: getActiveUsers(),
         count: users.size
+      });
+
+      // Update typing status for remaining users
+      socket.broadcast.emit('typingStatus', {
+        users: Array.from(typingUsers.keys()).map(id => users.get(id))
       });
     }
     console.log('Client disconnected');
