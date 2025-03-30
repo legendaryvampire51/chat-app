@@ -3,30 +3,80 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Real-time Chat App</title>
+    <title>Chat App</title>
     <link rel="stylesheet" href="styles.css">
-    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link href="https://emoji-css.afeld.me/emoji.css" rel="stylesheet">
 </head>
 <body>
-    <div class="container">
-        <div id="login-container" class="login-container">
-            <h2>Welcome to Chat App</h2>
+    <div class="app-container">
+        <div class="theme-toggle">
+            <button id="themeToggle">
+                <i class="fas fa-moon"></i>
+            </button>
+        </div>
+        
+        <div id="login" class="login-container">
+            <h2>Enter Chat</h2>
             <input type="text" id="username" placeholder="Enter your username">
-            <button onclick="joinChat()">Join Chat</button>
+            <button onclick="joinChat()">Join</button>
         </div>
 
-        <div id="chat-container" class="chat-container hidden">
+        <div id="chat" class="chat-container" style="display: none;">
             <div class="chat-header">
                 <h2>Chat Room</h2>
-                <span id="user-display"></span>
+                <div class="online-count"></div>
             </div>
-            <div class="chat-messages" id="messages"></div>
+
+            <div class="chat-messages"></div>
+
+            <div class="typing-indicator"></div>
+
             <div class="chat-input">
-                <input type="text" id="message-input" placeholder="Type your message...">
+                <button id="voiceRecordBtn" class="voice-record-btn">
+                    <i class="fas fa-microphone"></i>
+                </button>
+                <input type="text" id="messageInput" placeholder="Type a message...">
                 <button onclick="sendMessage()">Send</button>
             </div>
         </div>
+
+        <div class="user-list-container">
+            <div class="user-list-header">
+                <h3>Online Users</h3>
+            </div>
+            <div class="user-list"></div>
+        </div>
+
+        <!-- Emoji Picker Modal -->
+        <div id="emojiPicker" class="emoji-picker" style="display: none;">
+            <div class="emoji-picker-content">
+                <div class="emoji-list">
+                    <!-- Common emojis -->
+                    <span class="emoji-item" data-emoji="👍">👍</span>
+                    <span class="emoji-item" data-emoji="❤️">❤️</span>
+                    <span class="emoji-item" data-emoji="😊">😊</span>
+                    <span class="emoji-item" data-emoji="😂">😂</span>
+                    <span class="emoji-item" data-emoji="🎉">🎉</span>
+                    <span class="emoji-item" data-emoji="👏">👏</span>
+                    <span class="emoji-item" data-emoji="🔥">🔥</span>
+                    <span class="emoji-item" data-emoji="🤔">🤔</span>
+                </div>
+            </div>
+        </div>
     </div>
+
+    <!-- Message Context Menu -->
+    <div id="messageContextMenu" class="context-menu" style="display: none;">
+        <ul>
+            <li data-action="edit"><i class="fas fa-edit"></i> Edit</li>
+            <li data-action="delete"><i class="fas fa-trash"></i> Delete</li>
+            <li data-action="react"><i class="fas fa-smile"></i> React</li>
+        </ul>
+    </div>
+
+    <audio id="notificationSound" src="notification.mp3" preload="auto"></audio>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.3.2/socket.io.js"></script>
     <script src="script.js"></script>
 </body>
 </html> 
