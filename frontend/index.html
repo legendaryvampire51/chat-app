@@ -12,8 +12,10 @@
     <div class="container">
         <div id="login-container" class="login-container">
             <h2>Welcome to Chat App</h2>
-            <input type="text" id="username" placeholder="Enter your username">
-            <button onclick="joinChat()">Join Chat</button>
+            <form id="login-form">
+                <input type="text" id="username" placeholder="Enter your username" required>
+                <button type="submit">Join Chat</button>
+            </form>
         </div>
 
         <div id="chat-container" class="chat-container hidden">
@@ -21,10 +23,13 @@
                 <h2>Chat Room</h2>
                 <span id="user-display"></span>
             </div>
+            <div id="status-container"></div>
             <div class="chat-messages" id="messages"></div>
             <div class="chat-input">
-                <input type="text" id="message-input" placeholder="Type your message...">
-                <button onclick="sendMessage()">Send</button>
+                <form id="message-form">
+                    <input type="text" id="message-input" placeholder="Type your message...">
+                    <button type="submit">Send</button>
+                </form>
             </div>
         </div>
     </div>

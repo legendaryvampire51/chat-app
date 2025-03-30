@@ -675,20 +675,41 @@ document.addEventListener('DOMContentLoaded', () => {
     connectToServer();
     
     // Login form submit
-    document.getElementById('login-form').addEventListener('submit', (e) => {
+    document.getElementById('login-form')?.addEventListener('submit', (e) => {
         e.preventDefault();
         const username = document.getElementById('username').value.trim();
         joinChat(username);
     });
     
+    // Join button click (if form doesn't exist)
+    const joinButton = document.querySelector('.login-container button');
+    if (joinButton) {
+        joinButton.addEventListener('click', () => {
+            const username = document.getElementById('username').value.trim();
+            if (!username) {
+                alert('Please enter a username');
+                return;
+            }
+            joinChat(username);
+        });
+    }
+    
     // Send message on form submit
-    document.getElementById('message-form').addEventListener('submit', (e) => {
+    document.getElementById('message-form')?.addEventListener('submit', (e) => {
         e.preventDefault();
         sendMessage();
     });
     
+    // Send button click (if form doesn't exist)
+    const sendButton = document.querySelector('.chat-input button');
+    if (sendButton) {
+        sendButton.addEventListener('click', () => {
+            sendMessage();
+        });
+    }
+    
     // Send message on Enter key (without Shift)
-    document.getElementById('message-input').addEventListener('keydown', (e) => {
+    document.getElementById('message-input')?.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             sendMessage();
