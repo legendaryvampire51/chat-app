@@ -66,6 +66,7 @@ button:hover {
     height: 100%;
     display: flex;
     flex-direction: column;
+    position: relative;
 }
 
 .chat-header {
@@ -80,10 +81,12 @@ button:hover {
 .chat-messages {
     flex: 1;
     padding: 20px;
+    padding-bottom: 40px;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 10px;
+    position: relative;
 }
 
 .message {
@@ -209,7 +212,7 @@ button:hover {
 
 .typing-status {
     position: absolute;
-    bottom: 80px;
+    bottom: 70px;
     left: 20px;
     padding: 5px 10px;
     background: rgba(0, 0, 0, 0.1);
@@ -217,6 +220,7 @@ button:hover {
     font-size: 0.9em;
     color: #666;
     animation: fadeIn 0.3s ease-in;
+    z-index: 100;
 }
 
 @keyframes fadeIn {
@@ -233,5 +237,12 @@ button:hover {
 
     .user-list {
         max-height: 150px;
+    }
+
+    .typing-status {
+        bottom: 80px;
+        left: 50%;
+        transform: translateX(-50%);
+        white-space: nowrap;
     }
 } 

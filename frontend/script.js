@@ -133,12 +133,30 @@ function joinChat() {
 function handleTyping() {
     const isTyping = messageInput.value.length > 0;
     
+    // Clear existing timeout
+    if (typingTimeout) {
+        clearTimeout(typingTimeout);
+    }
+    
     // Only emit if typing status has changed
     if (isTyping !== lastTypingStatus) {
         lastTypingStatus = isTyping;
         socket.emit('typing', isTyping);
     }
+    
+    // Set new timeout to stop typing after 2 seconds of no input
+    if (isTyping) {
+        typingTimeout = setTimeout(() => {
+            lastTypingStatus = false;
+            socket.emit('typing', false);
+        }, 2000);
+    }
 }
+
+// Add touch events for mobile devices
+messageInput.addEventListener('input', handleTyping);
+messageInput.addEventListener('touchstart', handleTyping);
+messageInput.addEventListener('touchend', handleTyping);
 
 // Send message function
 function sendMessage() {
@@ -163,9 +181,6 @@ messageInput.addEventListener('keypress', (e) => {
     }
 });
 
-// Handle input changes for typing status
-messageInput.addEventListener('input', handleTyping);
-
 // Socket event handlers
 socket.on('message', addMessage);
 socket.on('userJoined', addMessage);
@@ -182,24 +197,41 @@ socket.on('messageHistory', (messages) => {
 
 // Handle typing status updates
 socket.on('typingStatus', (data) => {
-    const typingDiv = document.querySelector('.typing-status') || document.createElement('div');
-    typingDiv.className = 'typing-status';
+    const typingDiv = document.querySelector('.typing-status');
+    const chatMessages = document.querySelector('.chat-messages');
     
     if (data.users.length > 0) {
         const users = data.users.filter(user => user !== currentUsername);
         if (users.length > 0) {
-            typingDiv.textContent = users.length === 1
+            const message = users.length === 1
                 ? `${users[0]} is typing...`
                 : `${users.join(', ')} are typing...`;
-            if (!typingDiv.parentNode) {
-                messagesContainer.appendChild(typingDiv);
+                
+            if (typingDiv) {
+                typingDiv.textContent = message;
+            } else {
+                const newTypingDiv = document.createElement('div');
+                newTypingDiv.className = 'typing-status';
+                newTypingDiv.textContent = message;
+                chatMessages.appendChild(newTypingDiv);
             }
             return;
         }
     }
     
     // Remove typing status if no one is typing
-    if (typingDiv.parentNode) {
+    if (typingDiv) {
         typingDiv.remove();
     }
+});
+
+// Clear typing status when disconnected
+socket.on('disconnect', () => {
+    const typingDiv = document.querySelector('.typing-status');
+    if (typingDiv) {
+        typingDiv.remove();
+    }
+    lastTypingStatus = false;
+    console.log('Disconnected from server');
+    showStatus('Disconnected from chat server. Trying to reconnect...', 'warning');
 }); 
