@@ -3,15 +3,9 @@ const BACKEND_URL = window.location.hostname === 'localhost'
   ? 'http://localhost:3000'
   : 'https://chat-app-backend-ybjt.onrender.com';
 
-// Initialize socket with connection options
-const socket = io(BACKEND_URL, {
-    reconnection: true,
-    reconnectionAttempts: 5,
-    reconnectionDelay: 1000,
-    transports: ['websocket', 'polling']
-});
-
-let currentUsername = localStorage.getItem('chatUsername') || '';
+// Global variables
+let socket;
+let currentUsername = localStorage.getItem('username') || '';
 let typingTimeout = null;
 let lastTypingStatus = false;
 let activeMessageEdit = null; // Track which message is being edited
@@ -30,24 +24,7 @@ chatContainer.appendChild(userListContainer);
 
 // Function to add a message to the chat
 function addMessage(data) {
-    const messageElement = document.createElement('div');
-    
-    if (data.type === 'system') {
-        messageElement.classList.add('system-message');
-        messageElement.textContent = data.message;
-    } else {
-        messageElement.classList.add('message');
-        messageElement.classList.add(data.username === currentUsername ? 'sent' : 'received');
-        
-        messageElement.innerHTML = `
-            <div class="username">${data.username}</div>
-            <div class="text">${data.message}</div>
-            <div class="timestamp">${new Date(data.timestamp).toLocaleTimeString()}</div>
-        `;
-    }
-    
-    messagesContainer.appendChild(messageElement);
-    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    addMessageToChat(data);
 }
 
 // Connection event handlers
@@ -72,34 +49,45 @@ socket.on('disconnect', () => {
     showStatus('Disconnected from chat server. Trying to reconnect...', 'warning');
 });
 
-// Show status message to user
-function showStatus(message, type) {
-    const statusDiv = document.createElement('div');
-    statusDiv.className = `status-message ${type}`;
-    statusDiv.textContent = message;
-    messagesContainer.appendChild(statusDiv);
-    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+// Show status message
+function showStatus(message, type = 'info') {
+    const statusContainer = document.getElementById('status-container');
+    if (!statusContainer) return;
     
-    // Remove status message after 5 seconds
+    const statusMessage = document.createElement('div');
+    statusMessage.className = `status-message ${type}`;
+    statusMessage.textContent = message;
+    statusContainer.appendChild(statusMessage);
+    
+    // Remove after 5 seconds
     setTimeout(() => {
-        statusDiv.remove();
+        statusMessage.remove();
     }, 5000);
 }
 
-// Update user list display
-function updateUserList(data) {
-    userListContainer.innerHTML = `
-        <div class="user-list-header">
-            Online Users (${data.count})
-        </div>
-        <div class="user-list">
-            ${data.users.map(username => `
-                <div class="user-item">
-                    ${username === currentUsername ? `${username} (You)` : username}
-                </div>
-            `).join('')}
-        </div>
-    `;
+// Update user list
+function updateUserList(users) {
+    const userList = document.querySelector('.user-list');
+    const userCount = document.querySelector('.user-list-header span');
+    
+    if (userList && userCount) {
+        userList.innerHTML = '';
+        userCount.textContent = users.length;
+        
+        users.forEach(username => {
+            const userItem = document.createElement('div');
+            userItem.className = 'user-item';
+            userItem.textContent = username;
+            
+            // Highlight current user
+            if (username === currentUsername) {
+                userItem.textContent += ' (you)';
+                userItem.classList.add('current-user');
+            }
+            
+            userList.appendChild(userItem);
+        });
+    }
 }
 
 // Show chat interface
@@ -111,22 +99,30 @@ function showChat() {
 }
 
 // Join chat function
-function joinChat() {
-    const usernameInput = document.getElementById('username');
-    const username = usernameInput.value.trim();
+function joinChat(username, reconnect = false) {
+    if (!socket || !socket.connected) {
+        showStatus('Not connected to server. Please try again.', 'error');
+        return;
+    }
     
-    if (username) {
-        if (!socket.connected) {
-            showStatus('Trying to connect to server...', 'warning');
-            return;
-        }
-        
-        currentUsername = username;
-        localStorage.setItem('chatUsername', username);
-        socket.emit('join', username);
+    if (!username || username.trim() === '') {
+        alert('Please enter a username');
+        return;
+    }
+    
+    // Store username for reconnection
+    currentUsername = username;
+    localStorage.setItem('username', username);
+    
+    // Emit join event
+    socket.emit('join', { username });
+    
+    // Only show chat if not reconnecting automatically
+    if (!reconnect) {
         showChat();
     } else {
-        alert('Please enter a username');
+        // If reconnecting, still ensure chat is shown
+        showChat();
     }
 }
 
@@ -392,77 +388,17 @@ function connectToServer() {
     });
 }
 
-// Join chat room
-function joinChat(username, reconnect = false) {
-    if (!socket || !socket.connected) {
-        showStatus('Not connected to server. Please try again.', 'error');
-        return;
-    }
-    
-    if (!username || username.trim() === '') {
-        alert('Please enter a username');
-        return;
-    }
-    
-    // Store username for reconnection
-    currentUsername = username;
-    localStorage.setItem('chatUsername', username);
-    
-    // Emit join event
-    socket.emit('join', { username });
-    
-    // Only show chat if not reconnecting automatically
-    if (!reconnect) {
-        showChat();
-    }
-}
-
-// Show status message
-function showStatus(message, type = 'info') {
-    const statusContainer = document.getElementById('status-container');
-    const statusMessage = document.createElement('div');
-    statusMessage.className = `status-message ${type}`;
-    statusMessage.textContent = message;
-    statusContainer.appendChild(statusMessage);
-    
-    // Remove after 5 seconds
-    setTimeout(() => {
-        statusMessage.remove();
-    }, 5000);
-}
-
-// Update user list
-function updateUserList(users) {
-    const userList = document.querySelector('.user-list');
-    const userCount = document.querySelector('.user-list-header span');
-    
-    if (userList && userCount) {
-        userList.innerHTML = '';
-        userCount.textContent = users.length;
-        
-        users.forEach(username => {
-            const userItem = document.createElement('div');
-            userItem.className = 'user-item';
-            userItem.textContent = username;
-            
-            // Highlight current user
-            if (username === currentUsername) {
-                userItem.textContent += ' (you)';
-                userItem.classList.add('current-user');
-            }
-            
-            userList.appendChild(userItem);
-        });
-    }
-}
-
 // Add message to chat
 function addMessageToChat(messageData) {
     const messagesContainer = document.querySelector('.chat-messages');
+    if (!messagesContainer) return;
+    
     const messageElement = document.createElement('div');
     
     // Set message ID as data attribute for edit/delete
-    messageElement.dataset.id = messageData.id;
+    if (messageData.id) {
+        messageElement.dataset.id = messageData.id;
+    }
     
     // Create formatted timestamp
     const timestamp = new Date(messageData.timestamp);
@@ -471,7 +407,7 @@ function addMessageToChat(messageData) {
     // Determine message type and set content
     if (messageData.type === 'system') {
         messageElement.className = 'system-message';
-        messageElement.textContent = messageData.text;
+        messageElement.textContent = messageData.text || messageData.message; // Support both formats
     } else {
         messageElement.className = 'message';
         
@@ -479,16 +415,25 @@ function addMessageToChat(messageData) {
             messageElement.classList.add('deleted');
         }
         
+        const senderName = messageData.sender || messageData.username; // Support both formats
+        
+        // Add sent/received class based on sender
+        if (senderName === currentUsername) {
+            messageElement.classList.add('sent');
+        } else {
+            messageElement.classList.add('received');
+        }
+        
         // Message sender
         const senderElement = document.createElement('div');
         senderElement.className = 'message-sender';
-        senderElement.textContent = messageData.sender;
+        senderElement.textContent = senderName;
         messageElement.appendChild(senderElement);
         
         // Message text
         const textElement = document.createElement('div');
         textElement.className = 'message-text';
-        textElement.textContent = messageData.text;
+        textElement.textContent = messageData.text || messageData.message; // Support both formats
         
         // Add edited indicator if needed
         if (messageData.edited) {
@@ -507,7 +452,7 @@ function addMessageToChat(messageData) {
         messageElement.appendChild(timeElement);
         
         // Add edit/delete controls if message is from current user and not deleted
-        if (messageData.sender === currentUsername && !messageData.deleted) {
+        if (senderName === currentUsername && !messageData.deleted && messageData.id) {
             const controlsElement = document.createElement('div');
             controlsElement.className = 'message-controls';
             
@@ -716,8 +661,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     
-    // Show login form if no username is stored
-    if (!currentUsername) {
-        showLogin();
-    }
+    // Show login form initially
+    showLogin();
 }); 
