@@ -15,105 +15,117 @@ const io = socketIo(server, {
 });
 
 // Store connected users with their socket IDs and usernames
-const users = new Map();
+const connectedUsers = new Map();
 const typingUsers = new Map(); // Changed to Map to store timeout IDs
-const messageHistory = []; // Store message history
-const MAX_HISTORY = 50; // Maximum number of messages to store
-const messages = new Map(); // Store messages with their IDs
+const messageHistory = new Map(); // messageId -> message
 let messageIdCounter = 1;
 
 // Helper function to get active users list
 function getActiveUsers() {
-  return Array.from(users.values());
+  return Array.from(connectedUsers.values());
 }
 
-// Helper function to add message to history
-function addToHistory(messageData) {
-  messageHistory.push(messageData);
-  if (messageHistory.length > MAX_HISTORY) {
-    messageHistory.shift(); // Remove oldest message if exceeding limit
+function broadcastUserList() {
+  io.emit('userList', getActiveUsers());
+  console.log('Broadcasting user list:', getActiveUsers()); // Debug log
+}
+
+function addToHistory(message) {
+  // Keep only last 50 messages
+  const maxHistory = 50;
+  if (messageHistory.size >= maxHistory) {
+    const oldestKey = Array.from(messageHistory.keys())[0];
+    messageHistory.delete(oldestKey);
   }
-}
-
-function generateMessageId() {
-  return `msg_${Date.now()}_${messageIdCounter++}`;
+  messageHistory.set(message.id, message);
 }
 
 io.on('connection', (socket) => {
-  console.log('New client connected');
+  console.log('User connected:', socket.id); // Debug log
 
-  // Handle user joining
   socket.on('join', (username) => {
-    users.set(socket.id, username);
+    console.log('User joining:', username); // Debug log
+    
+    // Store user
+    connectedUsers.set(socket.id, username);
+    
+    // Send message history
+    const messages = Array.from(messageHistory.values());
+    socket.emit('messageHistory', messages);
+    console.log('Sent message history:', messages); // Debug log
     
     // Broadcast user joined message
     const joinMessage = {
+      id: messageIdCounter++,
       type: 'system',
-      username: username,
-      message: `${username} has joined the chat`,
-      timestamp: new Date().toISOString()
+      content: `${username} joined the chat`,
+      timestamp: Date.now()
     };
+    io.emit('message', joinMessage);
     addToHistory(joinMessage);
-    io.emit('userJoined', joinMessage);
-
-    // Send message history to the newly joined user
-    socket.emit('messageHistory', messageHistory);
-
-    // Send updated user list to all clients
-    io.emit('userList', {
-      users: getActiveUsers(),
-      count: users.size
-    });
+    
+    // Update user list for all clients
+    broadcastUserList();
   });
 
-  // Handle chat messages
-  socket.on('message', (message) => {
-    const username = users.get(socket.id);
-    const messageData = {
-      type: 'message',
-      username: username,
-      message: message,
-      timestamp: new Date().toISOString()
+  socket.on('message', (content) => {
+    const username = connectedUsers.get(socket.id);
+    if (!username) {
+      console.error('Message from unknown user:', socket.id);
+      return;
+    }
+
+    console.log('Message received:', { username, content }); // Debug log
+    
+    const message = {
+      id: messageIdCounter++,
+      type: 'text',
+      username,
+      content,
+      timestamp: Date.now()
     };
-    addToHistory(messageData);
-    io.emit('message', messageData);
+    
+    io.emit('message', message);
+    addToHistory(message);
+    
+    // Clear typing status
+    if (typingUsers.has(socket.id)) {
+      clearTimeout(typingUsers.get(socket.id));
+      typingUsers.delete(socket.id);
+      io.emit('typing', getActiveUsers().filter(user => typingUsers.has(user)));
+    }
   });
 
-  // Handle typing status
-  socket.on('typing', (isTyping) => {
-    const username = users.get(socket.id);
+  socket.on('typing', () => {
+    const username = connectedUsers.get(socket.id);
     if (!username) return;
 
-    // Clear existing timeout for this user if it exists
+    // Clear existing timeout
     if (typingUsers.has(socket.id)) {
       clearTimeout(typingUsers.get(socket.id));
     }
 
-    if (isTyping) {
-      // Set new timeout
-      const timeoutId = setTimeout(() => {
-        typingUsers.delete(socket.id);
-        socket.broadcast.emit('typingStatus', {
-          users: Array.from(typingUsers.keys()).map(id => users.get(id))
-        });
-      }, 2000); // Timeout after 2 seconds of no typing
-
-      typingUsers.set(socket.id, timeoutId);
-    } else {
+    // Set new timeout
+    typingUsers.set(socket.id, setTimeout(() => {
       typingUsers.delete(socket.id);
-    }
+      io.emit('typing', Array.from(typingUsers.keys())
+        .map(id => connectedUsers.get(id))
+        .filter(Boolean));
+    }, 3000));
 
-    // Broadcast current typing status
-    socket.broadcast.emit('typingStatus', {
-      users: Array.from(typingUsers.keys()).map(id => users.get(id))
-    });
+    // Broadcast typing users
+    io.emit('typing', Array.from(typingUsers.keys())
+      .map(id => connectedUsers.get(id))
+      .filter(Boolean));
   });
 
-  // Handle disconnection
   socket.on('disconnect', () => {
-    const username = users.get(socket.id);
+    const username = connectedUsers.get(socket.id);
     if (username) {
-      users.delete(socket.id);
+      console.log('User disconnected:', username); // Debug log
+      
+      // Remove user
+      connectedUsers.delete(socket.id);
       
       // Clear typing status
       if (typingUsers.has(socket.id)) {
@@ -121,47 +133,46 @@ io.on('connection', (socket) => {
         typingUsers.delete(socket.id);
       }
       
+      // Broadcast user left message
       const leaveMessage = {
+        id: messageIdCounter++,
         type: 'system',
-        username: username,
-        message: `${username} has left the chat`,
-        timestamp: new Date().toISOString()
+        content: `${username} left the chat`,
+        timestamp: Date.now()
       };
+      io.emit('message', leaveMessage);
       addToHistory(leaveMessage);
-      io.emit('userLeft', leaveMessage);
-
-      // Send updated user list
-      io.emit('userList', {
-        users: getActiveUsers(),
-        count: users.size
-      });
-
-      // Update typing status for remaining users
-      socket.broadcast.emit('typingStatus', {
-        users: Array.from(typingUsers.keys()).map(id => users.get(id))
-      });
+      
+      // Update user list
+      broadcastUserList();
     }
-    console.log('Client disconnected');
   });
 
   // Handle message editing
   socket.on('editMessage', (data) => {
     const { messageId, newContent } = data;
-    const message = messages.get(messageId);
+    const message = messageHistory.get(messageId);
     
     if (message && message.username === username) {
       message.content = newContent;
       message.edited = true;
-      io.emit('messageUpdated', message);
+      io.emit('messageUpdated', {
+        ...message,
+        reactions: Array.from(message.reactions.entries()).map(([emoji, users]) => ({
+          emoji,
+          users: Array.from(users)
+        })),
+        readBy: Array.from(message.readBy)
+      });
     }
   });
 
   // Handle message deletion
   socket.on('deleteMessage', (messageId) => {
-    const message = messages.get(messageId);
+    const message = messageHistory.get(messageId);
     
     if (message && message.username === username) {
-      messages.delete(messageId);
+      messageHistory.delete(messageId);
       io.emit('messageDeleted', messageId);
     }
   });
@@ -169,7 +180,7 @@ io.on('connection', (socket) => {
   // Handle message reactions
   socket.on('addReaction', (data) => {
     const { messageId, reaction } = data;
-    const message = messages.get(messageId);
+    const message = messageHistory.get(messageId);
     
     if (message) {
       if (!message.reactions.has(reaction)) {
@@ -186,29 +197,9 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Handle removing reactions
-  socket.on('removeReaction', (data) => {
-    const { messageId, reaction } = data;
-    const message = messages.get(messageId);
-    
-    if (message && message.reactions.has(reaction)) {
-      message.reactions.get(reaction).delete(username);
-      if (message.reactions.get(reaction).size === 0) {
-        message.reactions.delete(reaction);
-      }
-      io.emit('reactionUpdated', {
-        messageId,
-        reactions: Array.from(message.reactions.entries()).map(([emoji, users]) => ({
-          emoji,
-          users: Array.from(users)
-        }))
-      });
-    }
-  });
-
   // Handle read receipts
   socket.on('messageRead', (messageId) => {
-    const message = messages.get(messageId);
+    const message = messageHistory.get(messageId);
     if (message) {
       message.readBy.add(username);
       io.emit('readReceiptUpdated', {
@@ -216,23 +207,6 @@ io.on('connection', (socket) => {
         readBy: Array.from(message.readBy)
       });
     }
-  });
-
-  // Handle voice messages
-  socket.on('voiceMessage', (data) => {
-    const messageId = generateMessageId();
-    const messageData = {
-      id: messageId,
-      username: username,
-      content: data.audioUrl,
-      timestamp: Date.now(),
-      type: 'voice',
-      reactions: new Map(),
-      readBy: new Set([username])
-    };
-    
-    messages.set(messageId, messageData);
-    io.emit('message', messageData);
   });
 });
 

@@ -56,13 +56,20 @@ function updateUserList(users) {
             .join('');
         
         onlineCount.textContent = `${users.length} online`;
+        console.log('Updated user list:', users); // Debug log
+    } else {
+        console.error('User list elements not found'); // Debug log
     }
 }
 
 // Function to add message to UI
 function addMessageToUI(message) {
+    console.log('Adding message:', message); // Debug log
     const messagesContainer = document.getElementById('messages');
-    if (!messagesContainer) return;
+    if (!messagesContainer) {
+        console.error('Messages container not found');
+        return;
+    }
 
     const messageElement = document.createElement('div');
     messageElement.className = `message ${message.username === currentUsername ? 'own' : ''}`;
@@ -153,6 +160,7 @@ function joinChat() {
         }
         
         showStatus(`Welcome, ${username}!`, 'success');
+        console.log('Joined chat as:', username); // Debug log
     } else {
         alert('Please enter a username');
     }
@@ -215,8 +223,13 @@ socket.on('connect', () => {
     }
 });
 
-socket.on('message', addMessageToUI);
+socket.on('message', (message) => {
+    console.log('Received message:', message); // Debug log
+    addMessageToUI(message);
+});
+
 socket.on('messageHistory', (messages) => {
+    console.log('Received message history:', messages); // Debug log
     const messagesContainer = document.getElementById('messages');
     if (messagesContainer) {
         messagesContainer.innerHTML = '';
@@ -224,7 +237,10 @@ socket.on('messageHistory', (messages) => {
     }
 });
 
-socket.on('userList', updateUserList);
+socket.on('userList', (users) => {
+    console.log('Received user list:', users); // Debug log
+    updateUserList(users);
+});
 
 socket.on('disconnect', () => {
     showStatus('Disconnected from server. Trying to reconnect...', 'warning');
