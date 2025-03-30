@@ -396,4 +396,9 @@ button:hover {
     flex-direction: column;
     align-items: center;
     gap: 5px;
+}
+
+/* Override inline display property */
+#chat-container[style*="display: none"] {
+    display: none !important;
 } 
