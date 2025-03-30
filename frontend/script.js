@@ -198,7 +198,7 @@ socket.on('messageHistory', (messages) => {
 // Handle typing status updates
 socket.on('typingStatus', (data) => {
     const typingDiv = document.querySelector('.typing-status');
-    const chatMessages = document.querySelector('.chat-messages');
+    const chatInput = document.querySelector('.chat-input');
     
     if (data.users.length > 0) {
         const users = data.users.filter(user => user !== currentUsername);
@@ -213,7 +213,7 @@ socket.on('typingStatus', (data) => {
                 const newTypingDiv = document.createElement('div');
                 newTypingDiv.className = 'typing-status';
                 newTypingDiv.textContent = message;
-                chatMessages.appendChild(newTypingDiv);
+                chatInput.appendChild(newTypingDiv);
             }
             return;
         }

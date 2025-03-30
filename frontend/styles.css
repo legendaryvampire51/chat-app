@@ -137,6 +137,7 @@ button:hover {
     background-color: #f8f9fa;
     display: flex;
     gap: 10px;
+    position: relative;
 }
 
 .chat-input input {
@@ -212,9 +213,10 @@ button:hover {
 
 .typing-status {
     position: absolute;
-    bottom: 70px;
+    bottom: 100%;
     left: 20px;
     padding: 5px 10px;
+    margin-bottom: 5px;
     background: rgba(0, 0, 0, 0.1);
     border-radius: 15px;
     font-size: 0.9em;
@@ -240,9 +242,10 @@ button:hover {
     }
 
     .typing-status {
-        bottom: 80px;
+        bottom: 100%;
         left: 50%;
         transform: translateX(-50%);
         white-space: nowrap;
+        margin-bottom: 5px;
     }
 } 
