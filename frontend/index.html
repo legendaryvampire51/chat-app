@@ -39,6 +39,20 @@
             </div>
         </div>
     </div>
+    
+    <!-- Debug element -->
+    <div id="debug-info">Debug Mode</div>
+    
+    <script>
+        // Simple debug check to ensure JavaScript is running
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('HTML document loaded successfully');
+            const debugInfo = document.getElementById('debug-info');
+            if (debugInfo) {
+                debugInfo.textContent = 'JS Running: ' + new Date().toLocaleTimeString();
+            }
+        });
+    </script>
     <script src="script.js"></script>
 </body>
 </html> 

@@ -247,13 +247,19 @@ function showLogin() {
 // Show chat and hide login form
 function showChat() {
     console.log('Showing chat window');
-    const loginContainer = document.getElementById('login-container');
-    const chatContainer = document.getElementById('chat-container');
-    const messageInput = document.getElementById('message-input');
-    const userDisplay = document.getElementById('user-display');
-    
-    if (loginContainer) loginContainer.style.display = 'none';
-    if (chatContainer) {
+    try {
+        const loginContainer = document.getElementById('login-container');
+        const chatContainer = document.getElementById('chat-container');
+        const messageInput = document.getElementById('message-input');
+        const userDisplay = document.getElementById('user-display');
+        
+        if (!chatContainer) {
+            console.error('Chat container not found!');
+            alert('Debug: Chat container element not found!');
+            return;
+        }
+        
+        if (loginContainer) loginContainer.style.display = 'none';
         chatContainer.style.display = 'flex';
         
         // Check if user list container exists, if not create it
@@ -269,21 +275,38 @@ function showChat() {
             `;
             chatContainer.appendChild(userListContainer);
         }
+        
+        if (messageInput) messageInput.focus();
+        if (userDisplay) userDisplay.textContent = `Logged in as: ${currentUsername}`;
+        
+        // Force a reflow/repaint
+        void chatContainer.offsetWidth;
+        
+        console.log('Display states:', {
+            loginContainer: loginContainer ? loginContainer.style.display : 'not found',
+            chatContainer: chatContainer.style.display
+        });
+        
+        // Ensure chat container is visible
+        setTimeout(() => {
+            if (chatContainer.style.display !== 'flex') {
+                console.error('Chat container still not visible after timeout!');
+                chatContainer.style.display = 'flex';
+                alert('Debug: Forcing chat container display after timeout');
+            }
+        }, 500);
+        
+    } catch (error) {
+        console.error('Error in showChat:', error);
+        alert('Debug error in showChat: ' + error.message);
     }
-    
-    if (messageInput) messageInput.focus();
-    if (userDisplay) userDisplay.textContent = `Logged in as: ${currentUsername}`;
-    
-    console.log('Display states:', {
-        loginContainer: loginContainer ? loginContainer.style.display : 'not found',
-        chatContainer: chatContainer ? chatContainer.style.display : 'not found'
-    });
 }
 
 // Join chat room
 function joinChat(username, reconnect = false) {
     if (!socket || !socket.connected) {
         console.error('Socket not connected when trying to join chat');
+        alert('Debug: Socket not connected! Please refresh the page.');
         showStatus('Not connected to server. Please try again.', 'error');
         return;
     }
@@ -294,18 +317,24 @@ function joinChat(username, reconnect = false) {
     }
     
     console.log('Joining chat with username:', username);
+    alert('Debug: Attempting to join chat with username: ' + username);
     
-    // Store username for reconnection
-    currentUsername = username;
-    localStorage.setItem('username', username);
-    
-    // Emit join event
-    socket.emit('join', { username });
-    
-    // Show chat interface
-    showChat();
-    
-    console.log('Chat interface should be showing now');
+    try {
+        // Store username for reconnection
+        currentUsername = username;
+        localStorage.setItem('username', username);
+        
+        // Emit join event
+        socket.emit('join', { username });
+        
+        // Show chat interface
+        showChat();
+        
+        console.log('Chat interface should be showing now');
+    } catch (error) {
+        console.error('Error in joinChat:', error);
+        alert('Debug error: ' + error.message);
+    }
 }
 
 // Show status message

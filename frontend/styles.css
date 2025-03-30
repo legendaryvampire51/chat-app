@@ -67,6 +67,8 @@ button:hover {
     display: flex;
     flex-direction: column;
     position: relative;
+    background-color: #fff;
+    color: #000;
 }
 
 .chat-header {
@@ -401,4 +403,15 @@ button:hover {
 /* Override inline display property */
 #chat-container[style*="display: none"] {
     display: none !important;
+}
+
+/* Debug styles - remove after fixing issues */
+#debug-info {
+    position: fixed;
+    bottom: 10px;
+    right: 10px;
+    background: red;
+    color: white;
+    padding: 5px;
+    z-index: 9999;
 } 
