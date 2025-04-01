@@ -73,7 +73,7 @@ class Encryption {
     async generateSharedSecret(publicKey) {
         try {
             // Import the public key with the correct algorithm
-            const importedPublicKey = await crypto.subtle.importKey(
+            const importedPublicKey = await window.crypto.subtle.importKey(
                 'spki',
                 this.base64ToArrayBuffer(publicKey),
                 {
@@ -85,7 +85,7 @@ class Encryption {
             );
 
             // Generate shared secret using the imported key
-            const sharedSecret = await crypto.subtle.deriveKey(
+            const sharedSecret = await window.crypto.subtle.deriveKey(
                 {
                     name: 'ECDH',
                     public: importedPublicKey
@@ -113,11 +113,11 @@ class Encryption {
             const key = await this.generateSharedSecret(publicKey);
             
             // Generate IV
-            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const iv = window.crypto.getRandomValues(new Uint8Array(12));
             
             // Encrypt message
             const encodedMessage = new TextEncoder().encode(message);
-            const encryptedData = await crypto.subtle.encrypt(
+            const encryptedData = await window.crypto.subtle.encrypt(
                 {
                     name: 'AES-GCM',
                     iv: iv
@@ -133,7 +133,7 @@ class Encryption {
             combined.set(encryptedArray, iv.length);
 
             // Convert to base64
-            return btoa(String.fromCharCode(...combined));
+            return this.arrayBufferToBase64(combined);
         } catch (error) {
             console.error('Error encrypting message:', error);
             throw error;

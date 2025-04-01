@@ -1107,6 +1107,11 @@ window.logout = function() {
         
         if (loginContainer) {
             loginContainer.style.display = 'flex';
+            // Reset login form
+            const loginForm = document.getElementById('login-form');
+            if (loginForm) {
+                loginForm.reset();
+            }
         }
         
         if (chatContainer) {
@@ -1179,6 +1184,22 @@ window.logout = function() {
         if (usernameInput) {
             usernameInput.focus();
         }
+        
+        // Clear any active message edit
+        if (activeMessageEdit) {
+            cancelEdit(activeMessageEdit);
+        }
+        
+        // Clear any existing timeouts
+        if (typingTimeout) {
+            clearTimeout(typingTimeout);
+        }
+        if (window.markAsReadTimeout) {
+            clearTimeout(window.markAsReadTimeout);
+        }
+        
+        // Reset last typing status
+        lastTypingStatus = false;
         
     } catch (error) {
         console.error('Error during logout:', error);
