@@ -5,122 +5,70 @@ class Encryption {
         this.keyLength = 256;
         this.ivLength = 12;
         this.tagLength = 128;
-        this.publicKey = null;
-        this.privateKey = null;
-        this.userKeys = new Map(); // Store other users' public keys
+        this.key = null;
     }
 
-    // Generate a new key pair for the user
-    async generateKeyPair() {
+    // Generate a new key for encryption
+    async generateKey() {
         try {
-            const keyPair = await window.crypto.subtle.generateKey(
+            // Generate a random key
+            this.key = await window.crypto.subtle.generateKey(
                 {
-                    name: 'ECDH',
-                    namedCurve: 'P-256'
+                    name: 'AES-GCM',
+                    length: this.keyLength
                 },
                 true, // extractable
-                ['deriveBits'] // Use deriveBits instead of deriveKey
+                ['encrypt', 'decrypt']
             );
             
-            this.privateKey = keyPair.privateKey;
-            this.publicKey = keyPair.publicKey;
-            
-            // Export public key for sharing
-            const exportedPublicKey = await window.crypto.subtle.exportKey(
-                'spki',
-                this.publicKey
+            // Export the key for sharing
+            const exportedKey = await window.crypto.subtle.exportKey(
+                'raw',
+                this.key
             );
             
             // Convert to base64
-            const base64PublicKey = this.arrayBufferToBase64(exportedPublicKey);
-            
-            return {
-                publicKey: base64PublicKey,
-                privateKey: this.privateKey
-            };
+            return this.arrayBufferToBase64(exportedKey);
         } catch (error) {
-            console.error('Error generating key pair:', error);
+            console.error('Error generating key:', error);
             throw error;
         }
     }
 
-    // Import another user's public key
-    async importPublicKey(base64PublicKey) {
+    // Import a key for encryption/decryption
+    async importKey(base64Key) {
         try {
             // Convert base64 to ArrayBuffer
-            const binaryPublicKey = this.base64ToArrayBuffer(base64PublicKey);
+            const binaryKey = this.base64ToArrayBuffer(base64Key);
             
-            // Import the key with correct usages
-            const publicKey = await window.crypto.subtle.importKey(
-                'spki',
-                binaryPublicKey,
-                {
-                    name: 'ECDH',
-                    namedCurve: 'P-256'
-                },
-                true,
-                ['deriveBits'] // Use deriveBits instead of deriveKey
-            );
-            
-            return publicKey;
-        } catch (error) {
-            console.error('Error importing public key:', error);
-            throw error;
-        }
-    }
-
-    // Generate a shared secret key for encryption
-    async generateSharedSecret(publicKey) {
-        try {
-            // Import the public key with the correct algorithm
-            const importedPublicKey = await window.crypto.subtle.importKey(
-                'spki',
-                this.base64ToArrayBuffer(publicKey),
-                {
-                    name: 'ECDH',
-                    namedCurve: 'P-256'
-                },
-                true,
-                ['deriveBits'] // Use deriveBits instead of deriveKey
-            );
-
-            // Generate shared secret bits
-            const sharedSecretBits = await window.crypto.subtle.deriveBits(
-                {
-                    name: 'ECDH',
-                    public: importedPublicKey
-                },
-                this.privateKey,
-                256 // Generate 256 bits for AES-256
-            );
-
-            // Convert shared secret bits to a key
-            const key = await window.crypto.subtle.importKey(
+            // Import the key
+            this.key = await window.crypto.subtle.importKey(
                 'raw',
-                sharedSecretBits,
+                binaryKey,
                 {
                     name: 'AES-GCM',
-                    length: 256
+                    length: this.keyLength
                 },
                 true,
                 ['encrypt', 'decrypt']
             );
-
-            return key;
+            
+            return this.key;
         } catch (error) {
-            console.error('Error generating shared secret:', error);
+            console.error('Error importing key:', error);
             throw error;
         }
     }
 
     // Encrypt a message
-    async encrypt(message, publicKey) {
+    async encrypt(message) {
         try {
-            // Generate shared secret
-            const key = await this.generateSharedSecret(publicKey);
+            if (!this.key) {
+                throw new Error('No encryption key available');
+            }
             
             // Generate IV
-            const iv = window.crypto.getRandomValues(new Uint8Array(12));
+            const iv = window.crypto.getRandomValues(new Uint8Array(this.ivLength));
             
             // Encrypt message
             const encodedMessage = new TextEncoder().encode(message);
@@ -129,7 +77,7 @@ class Encryption {
                     name: 'AES-GCM',
                     iv: iv
                 },
-                key,
+                this.key,
                 encodedMessage
             );
 
@@ -148,8 +96,12 @@ class Encryption {
     }
 
     // Decrypt a message
-    async decrypt(encryptedMessage, senderPublicKey) {
+    async decrypt(encryptedMessage) {
         try {
+            if (!this.key) {
+                throw new Error('No encryption key available');
+            }
+            
             // Convert base64 to ArrayBuffer
             const combined = this.base64ToArrayBuffer(encryptedMessage);
             
@@ -157,16 +109,13 @@ class Encryption {
             const iv = combined.slice(0, this.ivLength);
             const encryptedData = combined.slice(this.ivLength);
             
-            // Generate shared secret
-            const key = await this.generateSharedSecret(senderPublicKey);
-            
             // Decrypt the message
             const decryptedData = await window.crypto.subtle.decrypt(
                 {
                     name: 'AES-GCM',
                     iv: iv
                 },
-                key,
+                this.key,
                 encryptedData
             );
             

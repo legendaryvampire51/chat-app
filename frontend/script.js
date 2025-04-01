@@ -50,22 +50,25 @@ function setupEventListeners() {
     // Login form submit
     const loginForm = document.getElementById('login-form');
     if (loginForm) {
-        loginForm.addEventListener('submit', (e) => {
+        loginForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            console.log('Login form submitted');
             const username = document.getElementById('username').value.trim();
             
-            if (!socketConnected) {
-                // If socket is not connected, attempt to reconnect
-                showStatus('Connecting to server...', 'warning');
-                connectToServer(() => {
-                    // Try joining after connection attempt
-                    joinChat(username);
-                });
+            if (!username) {
+                showStatus('Please enter a username', 'error');
                 return;
             }
             
-            joinChat(username);
+            try {
+                // Generate encryption key
+                const key = await window.encryption.generateKey();
+                
+                // Connect to server with username and encryption key
+                connectToServer(username, key);
+            } catch (error) {
+                console.error('Error during login:', error);
+                showStatus('Error during login: ' + error.message, 'error');
+            }
         });
     }
     
@@ -282,13 +285,31 @@ function setupSocketEvents(callback) {
     });
 
     // Receive message
-    socket.on('message', (messageData) => {
-        console.log('Received message:', messageData);
-        addMessageToChat(messageData);
-        
-        // If this message is from someone else, mark it as read
-        if (messageData.sender && messageData.sender !== currentUsername && messageData.id) {
-            markMessageAsRead(messageData.id);
+    socket.on('message', async (data) => {
+        try {
+            let message = data.content;
+            
+            // Decrypt message if it's encrypted
+            if (data.encrypted) {
+                // Import sender's key if not already imported
+                const senderKey = window.encryption.userKeys.get(data.sender);
+                if (!senderKey) {
+                    const user = window.users.find(u => u.username === data.sender);
+                    if (!user || !user.publicKey) {
+                        throw new Error('Sender\'s encryption key not available');
+                    }
+                    await window.encryption.importKey(user.publicKey);
+                }
+                
+                // Decrypt the message
+                message = await window.encryption.decrypt(data.content);
+            }
+            
+            // Add message to chat
+            addMessageToChat(message, false, data.sender, data.encrypted);
+        } catch (error) {
+            console.error('Error processing message:', error);
+            showStatus('Error processing message: ' + error.message, 'error');
         }
     });
 
@@ -662,59 +683,53 @@ function handleTyping() {
 // Send message function
 async function sendMessage() {
     const messageInput = document.getElementById('message-input');
-    if (!messageInput) {
-        console.error('Message input not found');
-        return;
-    }
+    const recipientSelect = document.getElementById('recipient-select');
+    const encryptCheckbox = document.getElementById('encrypt-message');
     
     const message = messageInput.value.trim();
+    const recipient = recipientSelect.value;
+    const shouldEncrypt = encryptCheckbox.checked;
     
-    if (!socket || !socket.connected) {
-        showStatus('Not connected to server. Please try again.', 'error');
-        return;
-    }
+    if (!message) return;
     
-    if (message) {
-        console.log('Sending message:', message);
+    try {
+        let encryptedMessage = message;
         
-        // Get recipient from UI
-        const recipient = document.getElementById('recipient-select').value;
-        const encryptMessage = document.getElementById('encrypt-message').checked;
-        
-        try {
-            if (encryptMessage) {
-                // Generate a new key pair for this message
-                const { publicKey } = await encryption.generateKeyPair();
-                
-                // Encrypt the message with our own public key
-                const encryptedMessage = await encryption.encrypt(message, publicKey);
-                
-                // Send encrypted message
-                socket.emit('sendEncryptedMessage', {
-                    text: message,
-                    recipient: recipient,
-                    encryptedMessage: encryptedMessage,
-                    senderPublicKey: publicKey
-                });
-            } else {
-                // Send as regular message
-                socket.emit('sendMessage', { text: message });
+        if (shouldEncrypt) {
+            // Import recipient's key if not already imported
+            const recipientKey = encryption.userKeys.get(recipient);
+            if (!recipientKey) {
+                const user = window.users.find(u => u.username === recipient);
+                if (!user || !user.publicKey) {
+                    throw new Error('Recipient\'s encryption key not available');
+                }
+                await encryption.importKey(user.publicKey);
             }
             
-            messageInput.value = '';
-            
-            // Reset typing status
-            lastTypingStatus = false;
-            socket.emit('typing', false);
-        } catch (error) {
-            console.error('Error sending message:', error);
-            showStatus('Error sending message: ' + error.message, 'error');
+            // Encrypt the message
+            encryptedMessage = await encryption.encrypt(message);
         }
+        
+        // Send message to server
+        socket.emit('message', {
+            content: encryptedMessage,
+            recipient: recipient,
+            encrypted: shouldEncrypt
+        });
+        
+        // Clear input
+        messageInput.value = '';
+        
+        // Add message to chat
+        addMessageToChat(message, true, recipient, shouldEncrypt);
+    } catch (error) {
+        console.error('Error sending message:', error);
+        showStatus('Error sending message: ' + error.message, 'error');
     }
 }
 
 // Add message to chat
-async function addMessageToChat(messageData) {
+async function addMessageToChat(message, isSystem = false, sender = null, encrypted = false) {
     const messagesContainer = document.querySelector('.chat-messages');
     if (!messagesContainer) {
         console.error('Messages container not found');
@@ -724,26 +739,26 @@ async function addMessageToChat(messageData) {
     const messageElement = document.createElement('div');
     
     // Set message ID as data attribute for edit/delete
-    if (messageData.id) {
-        messageElement.dataset.id = messageData.id;
+    if (message.id) {
+        messageElement.dataset.id = message.id;
     }
     
     // Create formatted timestamp
-    const timestamp = new Date(messageData.timestamp);
+    const timestamp = new Date(message.timestamp);
     const formattedTime = timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     
     // Determine message type and set content
-    if (messageData.type === 'system') {
+    if (isSystem) {
         messageElement.className = 'system-message';
-        messageElement.textContent = messageData.text || messageData.message;
+        messageElement.textContent = message.text || message.message;
     } else {
         messageElement.className = 'message';
         
-        if (messageData.deleted) {
+        if (message.deleted) {
             messageElement.classList.add('deleted');
         }
         
-        const senderName = messageData.sender || messageData.username;
+        const senderName = sender || message.username;
         
         // Add sent/received class based on sender
         if (senderName === currentUsername) {
@@ -752,8 +767,8 @@ async function addMessageToChat(messageData) {
             messageElement.classList.add('received');
             
             // Mark other users' messages as read when displayed
-            if (messageData.id) {
-                markMessageAsRead(messageData.id);
+            if (message.id) {
+                markMessageAsRead(message.id);
             }
         }
         
@@ -768,10 +783,10 @@ async function addMessageToChat(messageData) {
         textElement.className = 'message-text';
         
         // Handle encrypted messages
-        if (messageData.type === 'encrypted') {
+        if (encrypted) {
             try {
                 // If we have the sender's public key in the message data, use it
-                let senderPublicKey = messageData.senderPublicKey;
+                let senderPublicKey = message.senderPublicKey;
                 
                 // If not in message data, try to get it from our stored keys
                 if (!senderPublicKey) {
@@ -781,7 +796,7 @@ async function addMessageToChat(messageData) {
                 if (senderPublicKey) {
                     const importedKey = await encryption.importPublicKey(senderPublicKey);
                     const decryptedText = await encryption.decrypt(
-                        messageData.encryptedMessage,
+                        message.encryptedMessage,
                         importedKey
                     );
                     textElement.textContent = decryptedText;
@@ -789,8 +804,8 @@ async function addMessageToChat(messageData) {
                     // If we don't have the key yet, show encrypted indicator
                     textElement.textContent = '[Encrypted message]';
                     // Store the message data for later decryption
-                    if (!encryption.pendingDecryption.has(messageData.id)) {
-                        encryption.pendingDecryption.set(messageData.id, messageData);
+                    if (!encryption.pendingDecryption.has(message.id)) {
+                        encryption.pendingDecryption.set(message.id, message);
                     }
                 }
             } catch (error) {
@@ -798,11 +813,11 @@ async function addMessageToChat(messageData) {
                 textElement.textContent = '[Encrypted message]';
             }
         } else {
-            textElement.textContent = messageData.text || messageData.message;
+            textElement.textContent = message.text || message.message;
         }
         
         // Add encryption indicator if message is encrypted
-        if (messageData.type === 'encrypted') {
+        if (encrypted) {
             const encryptionIndicator = document.createElement('span');
             encryptionIndicator.className = 'encryption-indicator';
             encryptionIndicator.innerHTML = ' 🔒';
@@ -810,7 +825,7 @@ async function addMessageToChat(messageData) {
         }
         
         // Add edited indicator if needed
-        if (messageData.edited) {
+        if (message.edited) {
             const editedSpan = document.createElement('span');
             editedSpan.className = 'edited-indicator';
             editedSpan.textContent = ' (edited)';
@@ -830,7 +845,7 @@ async function addMessageToChat(messageData) {
         metaContainer.appendChild(timeElement);
         
         // Add read receipt if this is the user's message
-        if (senderName === currentUsername && messageData.id) {
+        if (senderName === currentUsername && message.id) {
             const readReceiptElement = document.createElement('div');
             readReceiptElement.className = 'read-receipt';
             readReceiptElement.innerHTML = '<i class="fas fa-check"></i>'; // Default to sent but not read
@@ -838,15 +853,15 @@ async function addMessageToChat(messageData) {
             metaContainer.appendChild(readReceiptElement);
             
             // Update read receipt if we have that information
-            if (readReceipts[messageData.id]) {
-                updateReadReceiptDisplay(messageData.id, readReceipts[messageData.id]);
+            if (readReceipts[message.id]) {
+                updateReadReceiptDisplay(message.id, readReceipts[message.id]);
             }
         }
         
         messageElement.appendChild(metaContainer);
         
         // Add edit/delete controls if message is from current user and not deleted
-        if (senderName === currentUsername && !messageData.deleted && messageData.id) {
+        if (senderName === currentUsername && !message.deleted && message.id) {
             const controlsElement = document.createElement('div');
             controlsElement.className = 'message-controls';
             
@@ -855,7 +870,7 @@ async function addMessageToChat(messageData) {
             editButton.className = 'edit-button';
             editButton.innerHTML = '<i class="fas fa-edit"></i>';
             editButton.title = 'Edit message';
-            editButton.addEventListener('click', () => editMessage(messageData.id));
+            editButton.addEventListener('click', () => editMessage(message.id));
             controlsElement.appendChild(editButton);
             
             // Delete button
@@ -863,7 +878,7 @@ async function addMessageToChat(messageData) {
             deleteButton.className = 'delete-button';
             deleteButton.innerHTML = '<i class="fas fa-trash"></i>';
             deleteButton.title = 'Delete message';
-            deleteButton.addEventListener('click', () => deleteMessage(messageData.id));
+            deleteButton.addEventListener('click', () => deleteMessage(message.id));
             controlsElement.appendChild(deleteButton);
             
             messageElement.appendChild(controlsElement);
@@ -874,9 +889,9 @@ async function addMessageToChat(messageData) {
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
     
     // Mark visible messages as read when they appear
-    if (messageData.type !== 'system' && messageData.id && 
-        messageData.sender && messageData.sender !== currentUsername) {
-        markMessageAsRead(messageData.id);
+    if (!isSystem && message.id && 
+        sender && sender !== currentUsername) {
+        markMessageAsRead(message.id);
     }
 }
 
