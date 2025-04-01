@@ -50,7 +50,7 @@ class Encryption {
             // Convert base64 to ArrayBuffer
             const binaryPublicKey = this.base64ToArrayBuffer(base64PublicKey);
             
-            // Import the key
+            // Import the key with correct usages
             const publicKey = await window.crypto.subtle.importKey(
                 'spki',
                 binaryPublicKey,
@@ -59,7 +59,7 @@ class Encryption {
                     namedCurve: 'P-256'
                 },
                 true,
-                ['deriveKey']
+                ['deriveKey'] // Only need deriveKey for ECDH public keys
             );
             
             return publicKey;
@@ -81,7 +81,7 @@ class Encryption {
                     namedCurve: 'P-256'
                 },
                 true,
-                ['deriveKey'] // Only need deriveKey for ECDH
+                ['deriveKey'] // Only need deriveKey for ECDH public keys
             );
 
             // Generate shared secret using the imported key
