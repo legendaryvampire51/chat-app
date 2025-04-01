@@ -683,19 +683,18 @@ async function sendMessage() {
         
         try {
             if (encryptMessage) {
-                // Always encrypt the message with our own public key
+                // Generate a new key pair for this message
                 const { publicKey } = await encryption.generateKeyPair();
-                const importedKey = await encryption.importPublicKey(publicKey);
                 
-                // Encrypt the message
-                const encryptedMessage = await encryption.encrypt(message, importedKey);
+                // Encrypt the message with our own public key
+                const encryptedMessage = await encryption.encrypt(message, publicKey);
                 
                 // Send encrypted message
                 socket.emit('sendEncryptedMessage', {
                     text: message,
                     recipient: recipient,
                     encryptedMessage: encryptedMessage,
-                    senderPublicKey: publicKey // Include sender's public key
+                    senderPublicKey: publicKey
                 });
             } else {
                 // Send as regular message
@@ -1085,8 +1084,8 @@ document.addEventListener('visibilitychange', () => {
     }
 });
 
-// Add logout function
-function logout() {
+// Make logout function globally available
+window.logout = function() {
     // Clear stored username
     localStorage.removeItem('username');
     
@@ -1114,7 +1113,7 @@ function logout() {
     
     // Clear any existing status messages
     showStatus('', '');
-}
+};
 
 // Initialize socket connection
 function initializeSocket() {

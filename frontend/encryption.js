@@ -72,17 +72,10 @@ class Encryption {
     // Generate a shared secret key for encryption
     async generateSharedSecret(publicKey) {
         try {
-            // Convert base64 to ArrayBuffer
-            const binaryString = atob(publicKey);
-            const bytes = new Uint8Array(binaryString.length);
-            for (let i = 0; i < binaryString.length; i++) {
-                bytes[i] = binaryString.charCodeAt(i);
-            }
-
             // Import the public key with the correct algorithm
             const importedPublicKey = await crypto.subtle.importKey(
                 'spki',
-                bytes,
+                this.base64ToArrayBuffer(publicKey),
                 {
                     name: 'ECDH',
                     namedCurve: 'P-256'
