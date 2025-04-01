@@ -1,3 +1,6 @@
+// Import encryption utility
+import encryption from './encryption.js';
+
 // Get the backend URL from environment variable or use localhost as fallback
 const BACKEND_URL = window.location.hostname === 'localhost' 
   ? 'http://localhost:3000'
@@ -391,6 +394,28 @@ function setupSocketEvents(callback) {
             });
         }
     });
+
+    // Handle public key exchange
+    socket.on('userPublicKey', async (data) => {
+        const { username, publicKey } = data;
+        try {
+            await encryption.importPublicKey(publicKey);
+            encryption.userKeys.set(username, publicKey);
+        } catch (error) {
+            console.error('Error importing public key:', error);
+        }
+    });
+
+    socket.on('existingPublicKeys', async (keys) => {
+        for (const { username, publicKey } of keys) {
+            try {
+                await encryption.importPublicKey(publicKey);
+                encryption.userKeys.set(username, publicKey);
+            } catch (error) {
+                console.error('Error importing public key:', error);
+            }
+        }
+    });
 }
 
 // Show login form and hide chat
@@ -462,7 +487,7 @@ function showChat() {
 }
 
 // Join chat room
-function joinChat(username, reconnect = false) {
+async function joinChat(username, reconnect = false) {
     if (!socket) {
         console.error('Socket not initialized');
         alert('Connection error: Socket not initialized. Refreshing the page may help.');
@@ -498,12 +523,16 @@ function joinChat(username, reconnect = false) {
     console.log('Joining chat with username:', username);
     
     try {
+        // Generate key pair for the user
+        const { publicKey } = await encryption.generateKeyPair();
+        
         // Store username for reconnection
         currentUsername = username;
         localStorage.setItem('username', username);
         
-        // Emit join event
+        // Emit join event with public key
         socket.emit('join', { username });
+        socket.emit('exchangePublicKey', { username, publicKey });
         
         // Show chat interface
         showChat();
@@ -602,7 +631,7 @@ function handleTyping() {
 }
 
 // Send message function
-function sendMessage() {
+async function sendMessage() {
     const messageInput = document.getElementById('message-input');
     if (!messageInput) {
         console.error('Message input not found');
@@ -618,17 +647,38 @@ function sendMessage() {
     
     if (message) {
         console.log('Sending message:', message);
-        socket.emit('sendMessage', { text: message });
-        messageInput.value = '';
         
-        // Reset typing status
-        lastTypingStatus = false;
-        socket.emit('typing', false);
+        // Get recipient from UI (you'll need to add a recipient selector)
+        const recipient = document.getElementById('recipient-select').value;
+        
+        try {
+            // Encrypt the message
+            const recipientPublicKey = await encryption.importPublicKey(
+                encryption.userKeys.get(recipient)
+            );
+            const encryptedMessage = await encryption.encrypt(message, recipientPublicKey);
+            
+            // Send encrypted message
+            socket.emit('sendEncryptedMessage', {
+                text: message,
+                recipient: recipient,
+                encryptedMessage: encryptedMessage
+            });
+            
+            messageInput.value = '';
+            
+            // Reset typing status
+            lastTypingStatus = false;
+            socket.emit('typing', false);
+        } catch (error) {
+            console.error('Error encrypting message:', error);
+            showStatus('Error sending encrypted message', 'error');
+        }
     }
 }
 
 // Add message to chat
-function addMessageToChat(messageData) {
+async function addMessageToChat(messageData) {
     const messagesContainer = document.querySelector('.chat-messages');
     if (!messagesContainer) {
         console.error('Messages container not found');
@@ -649,7 +699,7 @@ function addMessageToChat(messageData) {
     // Determine message type and set content
     if (messageData.type === 'system') {
         messageElement.className = 'system-message';
-        messageElement.textContent = messageData.text || messageData.message; // Support both formats
+        messageElement.textContent = messageData.text || messageData.message;
     } else {
         messageElement.className = 'message';
         
@@ -657,7 +707,7 @@ function addMessageToChat(messageData) {
             messageElement.classList.add('deleted');
         }
         
-        const senderName = messageData.sender || messageData.username; // Support both formats
+        const senderName = messageData.sender || messageData.username;
         
         // Add sent/received class based on sender
         if (senderName === currentUsername) {
@@ -680,7 +730,25 @@ function addMessageToChat(messageData) {
         // Message text
         const textElement = document.createElement('div');
         textElement.className = 'message-text';
-        textElement.textContent = messageData.text || messageData.message; // Support both formats
+        
+        // Handle encrypted messages
+        if (messageData.type === 'encrypted') {
+            try {
+                const senderPublicKey = await encryption.importPublicKey(
+                    encryption.userKeys.get(senderName)
+                );
+                const decryptedText = await encryption.decrypt(
+                    messageData.encryptedMessage,
+                    senderPublicKey
+                );
+                textElement.textContent = decryptedText;
+            } catch (error) {
+                console.error('Error decrypting message:', error);
+                textElement.textContent = '[Encrypted message]';
+            }
+        } else {
+            textElement.textContent = messageData.text || messageData.message;
+        }
         
         // Add edited indicator if needed
         if (messageData.edited) {

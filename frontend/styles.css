@@ -392,6 +392,7 @@ button:hover {
     display: flex;
     width: 100%;
     gap: 10px;
+    align-items: center;
 }
 
 #status-container {
@@ -443,4 +444,20 @@ button:hover {
 .fa-check-double {
     opacity: 1;
     color: #2979FF;
+}
+
+.recipient-select {
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    margin-right: 10px;
+    background-color: white;
+    font-size: 14px;
+    color: #333;
+}
+
+.recipient-select:focus {
+    outline: none;
+    border-color: #1a73e8;
+    box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.2);
 } 

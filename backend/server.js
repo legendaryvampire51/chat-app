@@ -45,6 +45,9 @@ const messageHistory = []; // Store message history
 const MAX_HISTORY = 50; // Maximum number of messages to store
 const messageReadStatus = new Map(); // Track read status of messages by each user
 
+// Store user public keys
+const userPublicKeys = new Map();
+
 // Helper function to get active users list
 function getActiveUsers() {
   return Array.from(users.values());
@@ -117,6 +120,7 @@ function updateReadStatus(username, messageIds) {
   return updatedMessageIds;
 }
 
+// Handle user joining
 io.on('connection', (socket) => {
   console.log('New client connected');
   let username = null;
@@ -269,6 +273,55 @@ io.on('connection', (socket) => {
     });
   }
 
+  // Handle public key exchange
+  socket.on('exchangePublicKey', async (data) => {
+    const { username, publicKey } = data;
+    if (!username || !publicKey) return;
+
+    // Store the user's public key
+    userPublicKeys.set(username, publicKey);
+
+    // Broadcast the new user's public key to all connected users
+    socket.broadcast.emit('userPublicKey', {
+      username,
+      publicKey
+    });
+
+    // Send all existing users' public keys to the new user
+    const existingKeys = Array.from(userPublicKeys.entries())
+      .filter(([key]) => key !== username)
+      .map(([username, key]) => ({ username, publicKey: key }));
+    
+    socket.emit('existingPublicKeys', existingKeys);
+  });
+
+  // Handle encrypted message
+  socket.on('sendEncryptedMessage', async (data) => {
+    const { text, recipient, encryptedMessage } = data;
+    if (!text || !recipient || !encryptedMessage) return;
+
+    const messageData = {
+      id: Date.now().toString(),
+      text: text,
+      sender: socket.username,
+      recipient: recipient,
+      encryptedMessage: encryptedMessage,
+      timestamp: Date.now(),
+      type: 'encrypted'
+    };
+
+    // Add to message history
+    addToHistory(messageData);
+
+    // Emit to sender and recipient
+    socket.emit('message', messageData);
+    const recipientSocket = Array.from(io.sockets.sockets.values())
+      .find(s => s.username === recipient);
+    if (recipientSocket) {
+      recipientSocket.emit('message', messageData);
+    }
+  });
+
   // Handle disconnection
   socket.on('disconnect', () => {
     if (username) {
@@ -296,6 +349,11 @@ io.on('connection', (socket) => {
       
       // Update user list for all clients
       io.emit('userList', getActiveUsers());
+
+      // Remove user's public key
+      if (socket.username) {
+        userPublicKeys.delete(socket.username);
+      }
     }
   });
 });
