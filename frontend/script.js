@@ -596,11 +596,19 @@ function updateUserList(users) {
     users.forEach(username => {
         const userItem = document.createElement('div');
         userItem.className = 'user-item';
-        userItem.textContent = username;
+        
+        // Add encryption status indicator
+        const hasKey = encryption.userKeys.has(username);
+        const statusIcon = hasKey ? '🔒' : '🔓';
+        
+        userItem.innerHTML = `
+            <span class="user-name">${username}</span>
+            <span class="encryption-status" title="${hasKey ? 'Encryption available' : 'Encryption not available'}">${statusIcon}</span>
+        `;
         
         // Highlight current user
         if (username === currentUsername) {
-            userItem.textContent += ' (you)';
+            userItem.querySelector('.user-name').textContent += ' (you)';
             userItem.classList.add('current-user');
         }
         
@@ -657,10 +665,33 @@ async function sendMessage() {
         
         // Get recipient from UI
         const recipient = document.getElementById('recipient-select').value;
+        const encryptMessage = document.getElementById('encrypt-message').checked;
         
         try {
-            // For now, send as regular message until encryption is properly set up
-            socket.emit('sendMessage', { text: message });
+            if (encryptMessage) {
+                // Check if we have the recipient's public key
+                const recipientPublicKey = encryption.userKeys.get(recipient);
+                if (!recipientPublicKey) {
+                    showStatus('Cannot encrypt: Recipient\'s public key not available', 'error');
+                    return;
+                }
+                
+                // Import recipient's public key
+                const importedKey = await encryption.importPublicKey(recipientPublicKey);
+                
+                // Encrypt the message
+                const encryptedMessage = await encryption.encrypt(message, importedKey);
+                
+                // Send encrypted message
+                socket.emit('sendEncryptedMessage', {
+                    text: message,
+                    recipient: recipient,
+                    encryptedMessage: encryptedMessage
+                });
+            } else {
+                // Send as regular message
+                socket.emit('sendMessage', { text: message });
+            }
             
             messageInput.value = '';
             
@@ -669,7 +700,7 @@ async function sendMessage() {
             socket.emit('typing', false);
         } catch (error) {
             console.error('Error sending message:', error);
-            showStatus('Error sending message', 'error');
+            showStatus('Error sending message: ' + error.message, 'error');
         }
     }
 }
