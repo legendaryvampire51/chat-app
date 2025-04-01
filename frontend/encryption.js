@@ -19,7 +19,7 @@ class Encryption {
                     namedCurve: 'P-256'
                 },
                 true, // extractable
-                ['deriveKey', 'deriveBits']
+                ['deriveKey'] // Only need deriveKey for ECDH
             );
             
             this.privateKey = keyPair.privateKey;
@@ -59,7 +59,7 @@ class Encryption {
                     namedCurve: 'P-256'
                 },
                 true,
-                ['deriveKey', 'deriveBits']
+                ['deriveKey']
             );
             
             return publicKey;
@@ -81,7 +81,7 @@ class Encryption {
                     namedCurve: 'P-256'
                 },
                 true,
-                ['deriveKey', 'deriveBits']
+                ['deriveKey'] // Only need deriveKey for ECDH
             );
 
             // Generate shared secret using the imported key
@@ -96,7 +96,7 @@ class Encryption {
                     length: 256
                 },
                 true,
-                ['encrypt', 'decrypt']
+                ['encrypt', 'decrypt'] // Need both for AES-GCM
             );
 
             return sharedSecret;
