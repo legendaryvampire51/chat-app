@@ -31,11 +31,12 @@ const io = socketIo(server, {
     credentials: false,
     allowedHeaders: ["Content-Type", "Authorization"]
   },
-  transports: ['websocket', 'polling'], // Support both WebSocket and polling
-  allowEIO3: true, // Allow Engine.IO version 3 clients
-  path: '/socket.io', // Default path
-  pingTimeout: 60000, // Increase ping timeout
-  pingInterval: 25000 // Increase ping interval
+  transports: ['websocket', 'polling'],
+  allowEIO3: true,
+  path: '/socket.io',
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  connectTimeout: 45000
 });
 
 // Store connected users with their socket IDs and usernames
@@ -122,7 +123,16 @@ function updateReadStatus(username, messageIds) {
 
 // Handle user joining
 io.on('connection', (socket) => {
-  console.log('New client connected');
+  console.log('New client connected, socket ID:', socket.id);
+  
+  socket.on('error', (error) => {
+    console.error('Socket error:', error);
+  });
+  
+  socket.on('connect_error', (error) => {
+    console.error('Socket connection error:', error);
+  });
+  
   let username = null;
 
   // Handle user joining

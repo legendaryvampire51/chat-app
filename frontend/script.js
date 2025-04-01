@@ -113,6 +113,7 @@ function connectToServer(callback) {
     // If socket already exists, disconnect it
     if (socket) {
         try {
+            console.log('Disconnecting existing socket connection');
             socket.disconnect();
         } catch (e) {
             console.error('Error disconnecting socket:', e);
@@ -121,16 +122,19 @@ function connectToServer(callback) {
     
     // Create socket connection
     try {
-        // First try to connect without specifying transports
+        console.log('Creating new socket connection...');
         socket = io(serverUrl, {
             reconnectionAttempts: 5,
             reconnectionDelay: 1000,
             reconnectionDelayMax: 5000,
             timeout: 20000,
-            forceNew: true, // Create a fresh connection
+            forceNew: true,
             autoConnect: true,
-            path: '/socket.io' // Default Socket.io path
+            path: '/socket.io'
         });
+        
+        // Setup socket event handlers immediately
+        setupSocketEvents(callback);
         
         // Add a timeout to switch to polling if websocket fails
         setTimeout(() => {
@@ -163,10 +167,7 @@ function connectToServer(callback) {
                 // Setup socket event handlers again
                 setupSocketEvents(callback);
             }
-        }, 5000); // Wait 5 seconds before trying polling
-        
-        // Setup socket event handlers
-        setupSocketEvents(callback);
+        }, 5000);
     } catch (error) {
         console.error('Error creating socket connection:', error);
         socketConnected = false;
@@ -182,7 +183,7 @@ function connectToServer(callback) {
             setTimeout(() => {
                 console.log(`Retrying connection (${connectionRetries}/${MAX_CONNECTION_RETRIES})...`);
                 connectToServer(callback);
-            }, 2000); // Wait 2 seconds before retry
+            }, 2000);
         }
     }
 }
@@ -488,6 +489,8 @@ function showChat() {
 
 // Join chat room
 async function joinChat(username, reconnect = false) {
+    console.log('Starting joinChat process for username:', username);
+    
     if (!socket) {
         console.error('Socket not initialized');
         alert('Connection error: Socket not initialized. Refreshing the page may help.');
@@ -520,24 +523,24 @@ async function joinChat(username, reconnect = false) {
         return;
     }
     
-    console.log('Joining chat with username:', username);
-    
     try {
+        console.log('Generating key pair for user...');
         // Generate key pair for the user
         const { publicKey } = await encryption.generateKeyPair();
+        console.log('Key pair generated successfully');
         
         // Store username for reconnection
         currentUsername = username;
         localStorage.setItem('username', username);
         
+        console.log('Emitting join event...');
         // Emit join event with public key
         socket.emit('join', { username });
         socket.emit('exchangePublicKey', { username, publicKey });
         
+        console.log('Showing chat interface...');
         // Show chat interface
         showChat();
-        
-        console.log('Chat interface should be showing now');
         
         // Update debug info
         const debugInfo = document.getElementById('debug-info');
