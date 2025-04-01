@@ -167,13 +167,25 @@ class Encryption {
             // Generate shared secret
             const sharedSecret = await this.generateSharedSecret(senderPublicKey);
             
+            // Convert shared secret to key
+            const key = await crypto.subtle.importKey(
+                'raw',
+                sharedSecret,
+                {
+                    name: 'AES-GCM',
+                    length: 256
+                },
+                false,
+                ['decrypt']
+            );
+            
             // Decrypt the message
             const decryptedData = await window.crypto.subtle.decrypt(
                 {
                     name: this.algorithm,
                     iv: iv
                 },
-                sharedSecret,
+                key,
                 encryptedData
             );
             
