@@ -72,10 +72,17 @@ class Encryption {
     // Generate a shared secret key for encryption
     async generateSharedSecret(publicKey) {
         try {
+            // Convert base64 to ArrayBuffer
+            const binaryString = atob(publicKey);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+
             // Import the public key with the correct algorithm
-            const importedPublicKey = await window.crypto.subtle.importKey(
+            const importedPublicKey = await crypto.subtle.importKey(
                 'spki',
-                publicKey,
+                bytes,
                 {
                     name: 'ECDH',
                     namedCurve: 'P-256'
@@ -85,7 +92,7 @@ class Encryption {
             );
 
             // Generate shared secret using the imported key
-            const sharedSecret = await window.crypto.subtle.deriveBits(
+            const sharedSecret = await crypto.subtle.deriveBits(
                 {
                     name: 'ECDH',
                     public: importedPublicKey
@@ -108,7 +115,7 @@ class Encryption {
             const sharedSecret = await this.generateSharedSecret(publicKey);
             
             // Convert shared secret to key
-            const key = await window.crypto.subtle.importKey(
+            const key = await crypto.subtle.importKey(
                 'raw',
                 sharedSecret,
                 {
@@ -120,11 +127,11 @@ class Encryption {
             );
 
             // Generate IV
-            const iv = window.crypto.getRandomValues(new Uint8Array(12));
+            const iv = crypto.getRandomValues(new Uint8Array(12));
             
             // Encrypt message
             const encodedMessage = new TextEncoder().encode(message);
-            const encryptedData = await window.crypto.subtle.encrypt(
+            const encryptedData = await crypto.subtle.encrypt(
                 {
                     name: 'AES-GCM',
                     iv: iv
@@ -140,7 +147,7 @@ class Encryption {
             combined.set(encryptedArray, iv.length);
 
             // Convert to base64
-            return this.arrayBufferToBase64(combined);
+            return btoa(String.fromCharCode(...combined));
         } catch (error) {
             console.error('Error encrypting message:', error);
             throw error;

@@ -440,7 +440,7 @@ function showChat() {
         const loginContainer = document.getElementById('login-container');
         const chatContainer = document.getElementById('chat-container');
         const messageInput = document.getElementById('message-input');
-        const usernameDisplay = document.getElementById('username-display');
+        const userDisplay = document.getElementById('user-display');
         
         if (!chatContainer) {
             console.error('Chat container not found!');
@@ -452,13 +452,15 @@ function showChat() {
         chatContainer.style.display = 'flex';
         
         // Update username display with logout button
-        if (usernameDisplay) {
-            usernameDisplay.innerHTML = `
+        if (userDisplay) {
+            userDisplay.innerHTML = `
                 <span>${currentUsername}</span>
                 <button onclick="logout()" class="logout-button">
                     <i class="fas fa-sign-out-alt"></i> Logout
                 </button>
             `;
+        } else {
+            console.error('User display element not found!');
         }
         
         // Check if user list container exists, if not create it
