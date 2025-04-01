@@ -400,18 +400,22 @@ function setupSocketEvents(callback) {
     socket.on('userPublicKey', async (data) => {
         const { username, publicKey } = data;
         try {
-            await encryption.importPublicKey(publicKey);
+            console.log('Received public key for user:', username);
+            const importedKey = await encryption.importPublicKey(publicKey);
             encryption.userKeys.set(username, publicKey);
+            console.log('Successfully imported public key for:', username);
         } catch (error) {
             console.error('Error importing public key:', error);
         }
     });
 
     socket.on('existingPublicKeys', async (keys) => {
+        console.log('Received existing public keys:', keys);
         for (const { username, publicKey } of keys) {
             try {
-                await encryption.importPublicKey(publicKey);
+                const importedKey = await encryption.importPublicKey(publicKey);
                 encryption.userKeys.set(username, publicKey);
+                console.log('Successfully imported public key for:', username);
             } catch (error) {
                 console.error('Error importing public key:', error);
             }
@@ -651,22 +655,12 @@ async function sendMessage() {
     if (message) {
         console.log('Sending message:', message);
         
-        // Get recipient from UI (you'll need to add a recipient selector)
+        // Get recipient from UI
         const recipient = document.getElementById('recipient-select').value;
         
         try {
-            // Encrypt the message
-            const recipientPublicKey = await encryption.importPublicKey(
-                encryption.userKeys.get(recipient)
-            );
-            const encryptedMessage = await encryption.encrypt(message, recipientPublicKey);
-            
-            // Send encrypted message
-            socket.emit('sendEncryptedMessage', {
-                text: message,
-                recipient: recipient,
-                encryptedMessage: encryptedMessage
-            });
+            // For now, send as regular message until encryption is properly set up
+            socket.emit('sendMessage', { text: message });
             
             messageInput.value = '';
             
@@ -674,8 +668,8 @@ async function sendMessage() {
             lastTypingStatus = false;
             socket.emit('typing', false);
         } catch (error) {
-            console.error('Error encrypting message:', error);
-            showStatus('Error sending encrypted message', 'error');
+            console.error('Error sending message:', error);
+            showStatus('Error sending message', 'error');
         }
     }
 }

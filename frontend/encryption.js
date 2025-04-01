@@ -31,8 +31,11 @@ class Encryption {
                 this.publicKey
             );
             
+            // Convert to base64
+            const base64PublicKey = this.arrayBufferToBase64(exportedPublicKey);
+            
             return {
-                publicKey: this.arrayBufferToBase64(exportedPublicKey),
+                publicKey: base64PublicKey,
                 privateKey: this.privateKey
             };
         } catch (error) {
@@ -44,7 +47,10 @@ class Encryption {
     // Import another user's public key
     async importPublicKey(base64PublicKey) {
         try {
+            // Convert base64 to ArrayBuffer
             const binaryPublicKey = this.base64ToArrayBuffer(base64PublicKey);
+            
+            // Import the key
             const publicKey = await window.crypto.subtle.importKey(
                 'spki',
                 binaryPublicKey,
@@ -160,12 +166,19 @@ class Encryption {
 
     // Utility function to convert base64 to ArrayBuffer
     base64ToArrayBuffer(base64) {
-        const binary = window.atob(base64);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) {
-            bytes[i] = binary.charCodeAt(i);
+        try {
+            // Add padding if needed
+            const paddedBase64 = base64.padEnd(base64.length + (4 - (base64.length % 4)) % 4, '=');
+            const binary = window.atob(paddedBase64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+            }
+            return bytes.buffer;
+        } catch (error) {
+            console.error('Error converting base64 to ArrayBuffer:', error);
+            throw error;
         }
-        return bytes.buffer;
     }
 }
 
