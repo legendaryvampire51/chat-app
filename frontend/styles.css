@@ -519,4 +519,34 @@ button:hover {
 
 .message.received .encryption-indicator {
     color: #666;
+}
+
+.logout-button {
+    background-color: #ff4444;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-left: 10px;
+    font-size: 0.9em;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    transition: background-color 0.2s;
+}
+
+.logout-button:hover {
+    background-color: #cc0000;
+}
+
+.logout-button i {
+    font-size: 0.9em;
+}
+
+#username-display {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
 } 

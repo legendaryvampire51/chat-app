@@ -1069,4 +1069,58 @@ document.addEventListener('visibilitychange', () => {
             socket.emit('markAsRead', { messageIds });
         }
     }
-}); 
+});
+
+// Add logout function
+function logout() {
+    // Clear stored username
+    localStorage.removeItem('username');
+    
+    // Disconnect socket if connected
+    if (socket && socket.connected) {
+        socket.disconnect();
+    }
+    
+    // Clear encryption keys
+    encryption.userKeys.clear();
+    encryption.pendingDecryption.clear();
+    
+    // Reset UI to login screen
+    document.getElementById('login-container').style.display = 'block';
+    document.getElementById('chat-container').style.display = 'none';
+    
+    // Clear message history
+    const messagesContainer = document.querySelector('.chat-messages');
+    if (messagesContainer) {
+        messagesContainer.innerHTML = '';
+    }
+    
+    // Reset current username
+    currentUsername = null;
+    
+    // Clear any existing status messages
+    showStatus('', '');
+}
+
+// Update showChat function to include logout button
+function showChat() {
+    const loginContainer = document.getElementById('login-container');
+    const chatContainer = document.getElementById('chat-container');
+    const usernameDisplay = document.getElementById('username-display');
+    
+    if (loginContainer && chatContainer && usernameDisplay) {
+        loginContainer.style.display = 'none';
+        chatContainer.style.display = 'block';
+        
+        // Update username display with logout button
+        usernameDisplay.innerHTML = `
+            <span>${currentUsername}</span>
+            <button onclick="logout()" class="logout-button">
+                <i class="fas fa-sign-out-alt"></i> Logout
+            </button>
+        `;
+        
+        // Initialize socket connection
+        initializeSocket();
+    }
+} 
