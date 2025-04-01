@@ -15,11 +15,11 @@ class Encryption {
         try {
             const keyPair = await window.crypto.subtle.generateKey(
                 {
-                    name: 'ECDSA',
+                    name: 'ECDH',
                     namedCurve: 'P-256'
                 },
                 true, // extractable
-                ['sign', 'verify']
+                ['deriveKey', 'deriveBits']
             );
             
             this.privateKey = keyPair.privateKey;
@@ -55,11 +55,11 @@ class Encryption {
                 'spki',
                 binaryPublicKey,
                 {
-                    name: 'ECDSA',
+                    name: 'ECDH',
                     namedCurve: 'P-256'
                 },
                 true,
-                ['verify']
+                ['deriveKey', 'deriveBits']
             );
             
             return publicKey;
@@ -81,17 +81,22 @@ class Encryption {
                     namedCurve: 'P-256'
                 },
                 true,
-                []
+                ['deriveKey', 'deriveBits']
             );
 
             // Generate shared secret using the imported key
-            const sharedSecret = await crypto.subtle.deriveBits(
+            const sharedSecret = await crypto.subtle.deriveKey(
                 {
                     name: 'ECDH',
                     public: importedPublicKey
                 },
                 this.privateKey,
-                256
+                {
+                    name: 'AES-GCM',
+                    length: 256
+                },
+                true,
+                ['encrypt', 'decrypt']
             );
 
             return sharedSecret;
@@ -105,20 +110,8 @@ class Encryption {
     async encrypt(message, publicKey) {
         try {
             // Generate shared secret
-            const sharedSecret = await this.generateSharedSecret(publicKey);
+            const key = await this.generateSharedSecret(publicKey);
             
-            // Convert shared secret to key
-            const key = await crypto.subtle.importKey(
-                'raw',
-                sharedSecret,
-                {
-                    name: 'AES-GCM',
-                    length: 256
-                },
-                false,
-                ['encrypt']
-            );
-
             // Generate IV
             const iv = crypto.getRandomValues(new Uint8Array(12));
             
@@ -158,24 +151,12 @@ class Encryption {
             const encryptedData = combined.slice(this.ivLength);
             
             // Generate shared secret
-            const sharedSecret = await this.generateSharedSecret(senderPublicKey);
-            
-            // Convert shared secret to key
-            const key = await crypto.subtle.importKey(
-                'raw',
-                sharedSecret,
-                {
-                    name: 'AES-GCM',
-                    length: 256
-                },
-                false,
-                ['decrypt']
-            );
+            const key = await this.generateSharedSecret(senderPublicKey);
             
             // Decrypt the message
             const decryptedData = await window.crypto.subtle.decrypt(
                 {
-                    name: this.algorithm,
+                    name: 'AES-GCM',
                     iv: iv
                 },
                 key,

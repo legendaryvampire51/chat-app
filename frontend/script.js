@@ -1086,33 +1086,104 @@ document.addEventListener('visibilitychange', () => {
 
 // Make logout function globally available
 window.logout = function() {
-    // Clear stored username
-    localStorage.removeItem('username');
-    
-    // Disconnect socket if connected
-    if (socket && socket.connected) {
-        socket.disconnect();
+    try {
+        // Clear stored username
+        localStorage.removeItem('username');
+        
+        // Disconnect socket if connected
+        if (socket && socket.connected) {
+            socket.disconnect();
+        }
+        
+        // Clear encryption keys if encryption instance exists
+        if (window.encryption) {
+            window.encryption.userKeys.clear();
+            window.encryption.pendingDecryption.clear();
+        }
+        
+        // Reset UI to login screen
+        const loginContainer = document.getElementById('login-container');
+        const chatContainer = document.getElementById('chat-container');
+        
+        if (loginContainer) {
+            loginContainer.style.display = 'flex';
+        }
+        
+        if (chatContainer) {
+            chatContainer.style.display = 'none';
+        }
+        
+        // Clear message history
+        const messagesContainer = document.querySelector('.chat-messages');
+        if (messagesContainer) {
+            messagesContainer.innerHTML = '';
+        }
+        
+        // Reset current username
+        currentUsername = null;
+        
+        // Clear any existing status messages
+        showStatus('', '');
+        
+        // Reset socket connection state
+        socketConnected = false;
+        
+        // Clear any existing socket instance
+        socket = null;
+        
+        // Reset connection retries
+        connectionRetries = 0;
+        
+        // Clear unread messages and read receipts
+        unreadMessages = [];
+        readReceipts = {};
+        
+        // Clear any existing typing status
+        const typingDiv = document.querySelector('.typing-status');
+        if (typingDiv) {
+            typingDiv.remove();
+        }
+        
+        // Reset message input
+        const messageInput = document.getElementById('message-input');
+        if (messageInput) {
+            messageInput.value = '';
+        }
+        
+        // Reset recipient select
+        const recipientSelect = document.getElementById('recipient-select');
+        if (recipientSelect) {
+            recipientSelect.value = 'all';
+        }
+        
+        // Reset encryption checkbox
+        const encryptCheckbox = document.getElementById('encrypt-message');
+        if (encryptCheckbox) {
+            encryptCheckbox.checked = false;
+        }
+        
+        // Clear user list
+        const userList = document.querySelector('.user-list');
+        if (userList) {
+            userList.innerHTML = '';
+        }
+        
+        // Update user count
+        const userCount = document.querySelector('.user-list-header span');
+        if (userCount) {
+            userCount.textContent = '0';
+        }
+        
+        // Focus username input
+        const usernameInput = document.getElementById('username');
+        if (usernameInput) {
+            usernameInput.focus();
+        }
+        
+    } catch (error) {
+        console.error('Error during logout:', error);
+        showStatus('Error during logout: ' + error.message, 'error');
     }
-    
-    // Clear encryption keys
-    encryption.userKeys.clear();
-    encryption.pendingDecryption.clear();
-    
-    // Reset UI to login screen
-    document.getElementById('login-container').style.display = 'block';
-    document.getElementById('chat-container').style.display = 'none';
-    
-    // Clear message history
-    const messagesContainer = document.querySelector('.chat-messages');
-    if (messagesContainer) {
-        messagesContainer.innerHTML = '';
-    }
-    
-    // Reset current username
-    currentUsername = null;
-    
-    // Clear any existing status messages
-    showStatus('', '');
 };
 
 // Initialize socket connection
