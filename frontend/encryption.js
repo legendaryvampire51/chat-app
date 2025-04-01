@@ -19,7 +19,7 @@ class Encryption {
                     namedCurve: 'P-256'
                 },
                 true, // extractable
-                ['deriveKey'] // Only need deriveKey for ECDH
+                ['deriveBits'] // Use deriveBits instead of deriveKey
             );
             
             this.privateKey = keyPair.privateKey;
@@ -59,7 +59,7 @@ class Encryption {
                     namedCurve: 'P-256'
                 },
                 true,
-                ['deriveKey'] // Only need deriveKey for ECDH public keys
+                ['deriveBits'] // Use deriveBits instead of deriveKey
             );
             
             return publicKey;
@@ -81,25 +81,32 @@ class Encryption {
                     namedCurve: 'P-256'
                 },
                 true,
-                ['deriveKey'] // Only need deriveKey for ECDH public keys
+                ['deriveBits'] // Use deriveBits instead of deriveKey
             );
 
-            // Generate shared secret using the imported key
-            const sharedSecret = await window.crypto.subtle.deriveKey(
+            // Generate shared secret bits
+            const sharedSecretBits = await window.crypto.subtle.deriveBits(
                 {
                     name: 'ECDH',
                     public: importedPublicKey
                 },
                 this.privateKey,
+                256 // Generate 256 bits for AES-256
+            );
+
+            // Convert shared secret bits to a key
+            const key = await window.crypto.subtle.importKey(
+                'raw',
+                sharedSecretBits,
                 {
                     name: 'AES-GCM',
                     length: 256
                 },
                 true,
-                ['encrypt', 'decrypt'] // Need both for AES-GCM
+                ['encrypt', 'decrypt']
             );
 
-            return sharedSecret;
+            return key;
         } catch (error) {
             console.error('Error generating shared secret:', error);
             throw error;
