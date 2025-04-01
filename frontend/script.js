@@ -61,7 +61,7 @@ function setupEventListeners() {
             
             try {
                 // Generate encryption key
-                const key = await window.encryption.generateKey();
+                const key = await encryption.generateKey();
                 
                 // Connect to server with username and encryption key
                 connectToServer(username, key);
@@ -563,19 +563,19 @@ async function joinChat(username, reconnect = false) {
     }
     
     try {
-        console.log('Generating key pair for user...');
-        // Generate key pair for the user
-        const { publicKey } = await encryption.generateKeyPair();
-        console.log('Key pair generated successfully');
+        console.log('Generating key for user...');
+        // Generate key for the user
+        const key = await encryption.generateKey();
+        console.log('Key generated successfully');
         
         // Store username for reconnection
         currentUsername = username;
         localStorage.setItem('username', username);
         
         console.log('Emitting join event...');
-        // Emit join event with public key
+        // Emit join event with key
         socket.emit('join', { username });
-        socket.emit('exchangePublicKey', { username, publicKey });
+        socket.emit('exchangePublicKey', { username, publicKey: key });
         
         console.log('Showing chat interface...');
         // Show chat interface
