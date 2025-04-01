@@ -440,7 +440,7 @@ function showChat() {
         const loginContainer = document.getElementById('login-container');
         const chatContainer = document.getElementById('chat-container');
         const messageInput = document.getElementById('message-input');
-        const userDisplay = document.getElementById('user-display');
+        const usernameDisplay = document.getElementById('username-display');
         
         if (!chatContainer) {
             console.error('Chat container not found!');
@@ -450,6 +450,16 @@ function showChat() {
         
         if (loginContainer) loginContainer.style.display = 'none';
         chatContainer.style.display = 'flex';
+        
+        // Update username display with logout button
+        if (usernameDisplay) {
+            usernameDisplay.innerHTML = `
+                <span>${currentUsername}</span>
+                <button onclick="logout()" class="logout-button">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </button>
+            `;
+        }
         
         // Check if user list container exists, if not create it
         if (!document.querySelector('.user-list-container')) {
@@ -466,7 +476,6 @@ function showChat() {
         }
         
         if (messageInput) messageInput.focus();
-        if (userDisplay) userDisplay.textContent = `Logged in as: ${currentUsername}`;
         
         // Force a reflow/repaint
         void chatContainer.offsetWidth;
@@ -484,6 +493,9 @@ function showChat() {
                 alert('Debug: Forcing chat container display after timeout');
             }
         }, 500);
+        
+        // Initialize socket connection
+        initializeSocket();
         
     } catch (error) {
         console.error('Error in showChat:', error);
@@ -1102,25 +1114,7 @@ function logout() {
     showStatus('', '');
 }
 
-// Update showChat function to include logout button
-function showChat() {
-    const loginContainer = document.getElementById('login-container');
-    const chatContainer = document.getElementById('chat-container');
-    const usernameDisplay = document.getElementById('username-display');
-    
-    if (loginContainer && chatContainer && usernameDisplay) {
-        loginContainer.style.display = 'none';
-        chatContainer.style.display = 'block';
-        
-        // Update username display with logout button
-        usernameDisplay.innerHTML = `
-            <span>${currentUsername}</span>
-            <button onclick="logout()" class="logout-button">
-                <i class="fas fa-sign-out-alt"></i> Logout
-            </button>
-        `;
-        
-        // Initialize socket connection
-        initializeSocket();
-    }
+// Initialize socket connection
+function initializeSocket() {
+    // Implementation of initializeSocket function
 } 
