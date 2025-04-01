@@ -669,15 +669,9 @@ async function sendMessage() {
         
         try {
             if (encryptMessage) {
-                // Check if we have the recipient's public key
-                const recipientPublicKey = encryption.userKeys.get(recipient);
-                if (!recipientPublicKey) {
-                    showStatus('Cannot encrypt: Recipient\'s public key not available', 'error');
-                    return;
-                }
-                
-                // Import recipient's public key
-                const importedKey = await encryption.importPublicKey(recipientPublicKey);
+                // Always encrypt the message with our own public key
+                const { publicKey } = await encryption.generateKeyPair();
+                const importedKey = await encryption.importPublicKey(publicKey);
                 
                 // Encrypt the message
                 const encryptedMessage = await encryption.encrypt(message, importedKey);
@@ -686,7 +680,8 @@ async function sendMessage() {
                 socket.emit('sendEncryptedMessage', {
                     text: message,
                     recipient: recipient,
-                    encryptedMessage: encryptedMessage
+                    encryptedMessage: encryptedMessage,
+                    senderPublicKey: publicKey // Include sender's public key
                 });
             } else {
                 // Send as regular message
@@ -762,20 +757,43 @@ async function addMessageToChat(messageData) {
         // Handle encrypted messages
         if (messageData.type === 'encrypted') {
             try {
-                const senderPublicKey = await encryption.importPublicKey(
-                    encryption.userKeys.get(senderName)
-                );
-                const decryptedText = await encryption.decrypt(
-                    messageData.encryptedMessage,
-                    senderPublicKey
-                );
-                textElement.textContent = decryptedText;
+                // If we have the sender's public key in the message data, use it
+                let senderPublicKey = messageData.senderPublicKey;
+                
+                // If not in message data, try to get it from our stored keys
+                if (!senderPublicKey) {
+                    senderPublicKey = encryption.userKeys.get(senderName);
+                }
+                
+                if (senderPublicKey) {
+                    const importedKey = await encryption.importPublicKey(senderPublicKey);
+                    const decryptedText = await encryption.decrypt(
+                        messageData.encryptedMessage,
+                        importedKey
+                    );
+                    textElement.textContent = decryptedText;
+                } else {
+                    // If we don't have the key yet, show encrypted indicator
+                    textElement.textContent = '[Encrypted message]';
+                    // Store the message data for later decryption
+                    if (!encryption.pendingDecryption.has(messageData.id)) {
+                        encryption.pendingDecryption.set(messageData.id, messageData);
+                    }
+                }
             } catch (error) {
                 console.error('Error decrypting message:', error);
                 textElement.textContent = '[Encrypted message]';
             }
         } else {
             textElement.textContent = messageData.text || messageData.message;
+        }
+        
+        // Add encryption indicator if message is encrypted
+        if (messageData.type === 'encrypted') {
+            const encryptionIndicator = document.createElement('span');
+            encryptionIndicator.className = 'encryption-indicator';
+            encryptionIndicator.innerHTML = ' 🔒';
+            textElement.appendChild(encryptionIndicator);
         }
         
         // Add edited indicator if needed
