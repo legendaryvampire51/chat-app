@@ -2,13 +2,11 @@
 import encryption from './encryption.js';
 
 // Get the backend URL from environment variable or use localhost as fallback
-const BACKEND_URL = window.location.hostname === 'localhost' 
-  ? 'http://localhost:3000'
-  : 'https://chat-app-backend-ybjt.onrender.com';
+const BACKEND_URL = 'https://chat-app-backend-ybjt.onrender.com';
 
 // Global variables
 let socket = null;
-let currentUsername = localStorage.getItem('username') || '';
+let currentUsername = null;
 let typingTimeout = null;
 let lastTypingStatus = false;
 let activeMessageEdit = null; // Track which message is being edited
@@ -98,11 +96,17 @@ function connectToServer(username = null) {
     showStatus('Connecting to server...', 'info');
     
     try {
+        // Disconnect existing socket if any
+        if (socket) {
+            socket.disconnect();
+        }
+
         socket = io(BACKEND_URL, {
             reconnection: true,
             reconnectionAttempts: 5,
             reconnectionDelay: 1000,
-            timeout: 20000
+            timeout: 20000,
+            transports: ['websocket', 'polling']
         });
 
         setupSocketEvents(username);
@@ -127,48 +131,54 @@ function setupSocketEvents(username = null) {
     });
 
     socket.on('authenticated', (data) => {
-        console.log('Authentication successful');
+        console.log('Authentication successful', data);
         isAuthenticated = true;
+        currentUsername = username;
         showStatus('Successfully joined chat', 'success');
         showChat();
         
         // Update user list with current user
         if (data && data.users) {
             updateUserList(data.users);
+            updateOnlineUsersCount(data.users.length);
         }
     });
 
     socket.on('userList', (users) => {
         console.log('Received user list:', users);
-        updateUserList(users);
-    });
-
-    socket.on('messageHistory', (history) => {
-        console.log('Received message history');
-        if (history && Array.isArray(history)) {
-            history.forEach(message => {
-                addMessageToChat(message);
-            });
+        if (Array.isArray(users)) {
+            updateUserList(users);
+            updateOnlineUsersCount(users.length);
         }
     });
 
-    // Authentication failed
-    socket.on('authentication_error', (error) => {
-        console.error('Authentication failed:', error);
-        isAuthenticated = false;
-        showStatus('Authentication failed: ' + error.message, 'error');
+    socket.on('userJoined', (data) => {
+        console.log('User joined:', data);
+        if (data.users) {
+            updateUserList(data.users);
+            updateOnlineUsersCount(data.users.length);
+        }
+        addSystemMessage(`${data.username} joined the chat`);
     });
 
-    // Connection error
-    socket.on('connect_error', (error) => {
-        console.error('Connection error:', error);
-        handleConnectionError(error);
+    socket.on('userLeft', (data) => {
+        console.log('User left:', data);
+        if (data.users) {
+            updateUserList(data.users);
+            updateOnlineUsersCount(data.users.length);
+        }
+        addSystemMessage(`${data.username} left the chat`);
     });
 
-    // Disconnected
     socket.on('disconnect', (reason) => {
-        console.log('Disconnected from server. Reason:', reason);
-        handleDisconnect(reason);
+        console.log('Disconnected:', reason);
+        socketConnected = false;
+        showStatus('Disconnected from server', 'error');
+    });
+
+    socket.on('error', (error) => {
+        console.error('Socket error:', error);
+        showStatus('Connection error: ' + error.message, 'error');
     });
 
     // Handle typing status updates
@@ -468,7 +478,15 @@ function updateUserList(users) {
         users.forEach(username => {
             const userItem = document.createElement('div');
             userItem.className = 'user-item';
-            userItem.textContent = username;
+            
+            // Add "you" indicator if it's the current user
+            if (username === currentUsername) {
+                userItem.textContent = `${username} (you)`;
+                userItem.classList.add('current-user');
+            } else {
+                userItem.textContent = username;
+            }
+            
             userList.appendChild(userItem);
         });
     }
@@ -1028,4 +1046,18 @@ window.logout = function() {
 // Initialize socket connection
 function initializeSocket() {
     // Implementation of initializeSocket function
+}
+
+function updateOnlineUsersCount(count) {
+    const userCountElement = document.querySelector('.online-users-header');
+    if (userCountElement) {
+        userCountElement.textContent = `Online Users (${count})`;
+    }
+}
+
+function addSystemMessage(message) {
+    const messageContainer = document.createElement('div');
+    messageContainer.className = 'message system-message';
+    messageContainer.textContent = message;
+    document.querySelector('.chat-messages').appendChild(messageContainer);
 } 

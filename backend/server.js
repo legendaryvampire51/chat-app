@@ -123,16 +123,7 @@ function updateReadStatus(username, messageIds) {
 
 // Handle user joining
 io.on('connection', (socket) => {
-  console.log('New client connected, socket ID:', socket.id);
-  
-  socket.on('error', (error) => {
-    console.error('Socket error:', error);
-  });
-  
-  socket.on('connect_error', (error) => {
-    console.error('Socket connection error:', error);
-  });
-  
+  console.log('New client connected:', socket.id);
   let username = null;
   let isAuthenticated = false;
 
@@ -153,47 +144,48 @@ io.on('connection', (socket) => {
       // Store user data
       username = authData.username;
       users.set(socket.id, username);
-      
-      // Store public key if provided
-      if (authData.publicKey) {
-        userPublicKeys.set(username, authData.publicKey);
-      }
-      
-      // Mark as authenticated
       isAuthenticated = true;
       
       // Get current user list
-      const activeUsers = getActiveUsers();
+      const activeUsers = Array.from(users.values());
       
       // Send authentication success with user list
       socket.emit('authenticated', {
-        users: activeUsers
+        users: activeUsers,
+        username: username
       });
       
       // Send current user list to all users
       io.emit('userList', activeUsers);
       
-      // Send message history to new user
-      socket.emit('messageHistory', messageHistory);
-      
       // Broadcast the new user joined
-      const joinMessage = {
-        type: 'system',
-        content: `${username} joined the chat`,
-        timestamp: new Date().toISOString()
-      };
-      
-      // Add to history and broadcast
-      addToHistory(joinMessage);
       io.emit('userJoined', {
         username: username,
         users: activeUsers
       });
       
       console.log('User successfully authenticated:', username);
+      console.log('Current users:', activeUsers);
     } catch (error) {
       console.error('Authentication error:', error);
       socket.emit('authentication_error', { message: error.message });
+    }
+  });
+
+  // Handle disconnect
+  socket.on('disconnect', () => {
+    if (username && isAuthenticated) {
+      users.delete(socket.id);
+      const activeUsers = Array.from(users.values());
+      
+      // Notify all clients about user leaving
+      io.emit('userLeft', {
+        username: username,
+        users: activeUsers
+      });
+      
+      console.log('User disconnected:', username);
+      console.log('Current users:', activeUsers);
     }
   });
 
@@ -208,12 +200,11 @@ io.on('connection', (socket) => {
       id: uuidv4(),
       sender: username,
       text: messageData.text,
-      timestamp: new Date().toISOString(),
-      type: 'user'
+      timestamp: new Date().toISOString()
     };
     
-    const savedMessage = addToHistory(message);
-    io.emit('message', savedMessage);
+    console.log('New message:', message);
+    io.emit('message', message);
   });
 
   // Handle read receipts
@@ -368,31 +359,6 @@ io.on('connection', (socket) => {
       .find(s => s.username === recipient);
     if (recipientSocket) {
       recipientSocket.emit('message', messageData);
-    }
-  });
-
-  // Handle disconnection
-  socket.on('disconnect', () => {
-    console.log('Client disconnected, socket ID:', socket.id);
-    if (username && isAuthenticated) {
-      users.delete(socket.id);
-      const activeUsers = getActiveUsers();
-      
-      // Broadcast user left
-      const leaveMessage = {
-        type: 'system',
-        content: `${username} left the chat`,
-        timestamp: new Date().toISOString()
-      };
-      
-      // Add to history and broadcast
-      addToHistory(leaveMessage);
-      io.emit('userLeft', {
-        username: username,
-        users: activeUsers
-      });
-      
-      console.log('User left:', username);
     }
   });
 });
