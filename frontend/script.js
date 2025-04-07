@@ -139,38 +139,14 @@ function connectToServer(callback) {
         // Setup socket event handlers immediately
         setupSocketEvents(callback);
         
-        // Add a timeout to switch to polling if websocket fails
-        setTimeout(() => {
-            if (!socketConnected) {
-                console.log('WebSocket connection failed, trying polling transport...');
-                if (debugInfo) {
-                    debugInfo.textContent = 'Trying polling transport...';
-                }
-                
-                // Disconnect current socket
-                if (socket) {
-                    try {
-                        socket.disconnect();
-                    } catch (e) {
-                        console.error('Error disconnecting socket:', e);
-                    }
-                }
-                
-                // Try with polling transport only
-                socket = io(serverUrl, {
-                    reconnectionAttempts: 5,
-                    reconnectionDelay: 1000,
-                    reconnectionDelayMax: 5000,
-                    timeout: 20000,
-                    forceNew: true,
-                    transports: ['polling'],
-                    path: '/socket.io'
-                });
-                
-                // Setup socket event handlers again
-                setupSocketEvents(callback);
-            }
-        }, 5000);
+        // Initialize encryption if available
+        if (window.encryption) {
+            window.encryption.initialize().then(() => {
+                console.log('Encryption status:', window.encryption.isSupported ? 'Enabled' : 'Disabled');
+            }).catch(error => {
+                console.warn('Encryption initialization failed:', error);
+            });
+        }
     } catch (error) {
         console.error('Error creating socket connection:', error);
         socketConnected = false;
@@ -651,48 +627,34 @@ function handleTyping() {
     }
 }
 
-// Send message function
+// Handle sending messages
 async function sendMessage() {
-    const messageInput = document.getElementById('message-input');
-    const recipientSelect = document.getElementById('recipient-select');
-    const encryptCheckbox = document.getElementById('encrypt-message');
-    
-    const message = messageInput.value.trim();
-    const recipient = recipientSelect.value;
-    const shouldEncrypt = encryptCheckbox.checked;
-    
-    if (!message) return;
-    
+    if (!socket || !socketConnected) {
+        showStatus('Not connected to server', 'error');
+        return;
+    }
+
     try {
-        let encryptedMessage = message;
-        
-        if (shouldEncrypt) {
-            // Import recipient's key if not already imported
-            const recipientKey = encryption.userKeys.get(recipient);
-            if (!recipientKey) {
-                const user = window.users.find(u => u.username === recipient);
-                if (!user || !user.publicKey) {
-                    throw new Error('Recipient\'s encryption key not available');
-                }
-                await encryption.importKey(user.publicKey);
+        let messageData = {
+            content: messageInput.value.trim(),
+            timestamp: new Date().toISOString(),
+            sender: currentUsername
+        };
+
+        // Only attempt encryption if it's supported
+        if (window.encryption && window.encryption.isSupported) {
+            try {
+                const encryptedMessage = await window.encryption.encrypt(messageData.content);
+                messageData.content = encryptedMessage;
+                messageData.encrypted = true;
+            } catch (error) {
+                console.warn('Encryption failed, sending unencrypted message:', error);
+                // Continue with unencrypted message
             }
-            
-            // Encrypt the message
-            encryptedMessage = await encryption.encrypt(message);
         }
-        
-        // Send message to server
-        socket.emit('message', {
-            content: encryptedMessage,
-            recipient: recipient,
-            encrypted: shouldEncrypt
-        });
-        
-        // Clear input
-        messageInput.value = '';
-        
-        // Add message to chat
-        addMessageToChat(message, true, recipient, shouldEncrypt);
+
+        socket.emit('message', messageData);
+        displayMessage(messageData);
     } catch (error) {
         console.error('Error sending message:', error);
         showStatus('Error sending message: ' + error.message, 'error');

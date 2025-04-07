@@ -6,10 +6,33 @@ class Encryption {
         this.ivLength = 12;
         this.tagLength = 128;
         this.key = null;
+        this.isSupported = false;
+        this.initialize();
+    }
+
+    async initialize() {
+        try {
+            // Check if Web Crypto API is available
+            if (!window.crypto || !window.crypto.subtle) {
+                console.warn('Web Crypto API not available. Encryption will be disabled.');
+                this.isSupported = false;
+                return;
+            }
+
+            // Test if we can generate a key
+            await this.generateKey();
+            this.isSupported = true;
+            console.log('Encryption is supported and initialized');
+        } catch (error) {
+            console.warn('Encryption initialization failed:', error);
+            this.isSupported = false;
+        }
     }
 
     // Generate a new key for encryption
     async generateKey() {
+        if (!this.isSupported) return null;
+
         try {
             // Generate a random key
             this.key = await window.crypto.subtle.generateKey(
@@ -31,12 +54,15 @@ class Encryption {
             return this.arrayBufferToBase64(exportedKey);
         } catch (error) {
             console.error('Error generating key:', error);
-            throw error;
+            this.isSupported = false;
+            return null;
         }
     }
 
     // Import a key for encryption/decryption
     async importKey(base64Key) {
+        if (!this.isSupported) return false;
+
         try {
             // Convert base64 to ArrayBuffer
             const binaryKey = this.base64ToArrayBuffer(base64Key);
@@ -52,11 +78,11 @@ class Encryption {
                 true,
                 ['encrypt', 'decrypt']
             );
-            
-            return this.key;
+            return true;
         } catch (error) {
             console.error('Error importing key:', error);
-            throw error;
+            this.isSupported = false;
+            return false;
         }
     }
 
