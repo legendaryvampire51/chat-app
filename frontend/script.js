@@ -159,16 +159,22 @@ function connectToServer(callback) {
         // Try to reconnect if under max retries
         if (connectionRetries < MAX_CONNECTION_RETRIES) {
             connectionRetries++;
-            setTimeout(() => {
+            const retryConnection = () => {
                 console.log(`Retrying connection (${connectionRetries}/${MAX_CONNECTION_RETRIES})...`);
                 connectToServer(callback);
-            }, 2000);
+            };
+            setTimeout(retryConnection, 2000);
         }
     }
 }
 
 // Setup all socket event handlers
 function setupSocketEvents(callback) {
+    if (!socket) {
+        console.error('Cannot setup events - socket not initialized');
+        return;
+    }
+    
     console.log('Setting up socket events');
 
     // Connection successful
@@ -555,11 +561,12 @@ function showStatus(message, type = 'info') {
     statusContainer.appendChild(statusMessage);
     
     // Remove after 5 seconds
-    setTimeout(() => {
+    const removeStatus = () => {
         if (statusMessage.parentNode) {
             statusMessage.remove();
         }
-    }, 5000);
+    };
+    setTimeout(removeStatus, 5000);
 }
 
 // Update user list
@@ -581,16 +588,27 @@ function updateUserList(users) {
         
         // Add encryption status indicator
         const hasKey = encryption.userKeys.has(username);
-        const statusIcon = hasKey ? '🔒' : '🔓';
+        const statusIcon = hasKey ? '🔒' : '��';
         
-        userItem.innerHTML = `
-            <span class="user-name">${username}</span>
-            <span class="encryption-status" title="${hasKey ? 'Encryption available' : 'Encryption not available'}">${statusIcon}</span>
-        `;
+        // Create user name span
+        const userNameSpan = document.createElement('span');
+        userNameSpan.className = 'user-name';
+        userNameSpan.textContent = username;
+        
+        // Create encryption status span
+        const statusSpan = document.createElement('span');
+        statusSpan.className = 'encryption-status';
+        statusSpan.title = hasKey ? 'Encryption available' : 'Encryption not available';
+        statusSpan.textContent = statusIcon;
+        
+        // Append elements
+        userItem.appendChild(userNameSpan);
+        userItem.appendChild(statusSpan);
         
         // Highlight current user
         if (username === currentUsername) {
-            userItem.querySelector('.user-name').textContent += ' (you)';
+            const youText = document.createTextNode(' (you)');
+            userNameSpan.appendChild(youText);
             userItem.classList.add('current-user');
         }
         
