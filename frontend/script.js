@@ -193,11 +193,6 @@ function connectToServer(callback) {
 
 // Setup all socket event handlers
 function setupSocketEvents(callback) {
-    if (!socket) {
-        console.error('Cannot setup events - socket not initialized');
-        return;
-    }
-    
     console.log('Setting up socket events');
 
     // Connection successful
@@ -231,6 +226,38 @@ function setupSocketEvents(callback) {
         }
     });
 
+    // Handle user list updates
+    socket.on('userList', (users) => {
+        console.log('Received user list:', users);
+        updateUserList(users);
+    });
+
+    // Handle message history
+    socket.on('messageHistory', (history) => {
+        console.log('Received message history');
+        displayMessageHistory(history);
+    });
+
+    // Handle new messages
+    socket.on('message', (messageData) => {
+        console.log('Received new message:', messageData);
+        displayMessage(messageData);
+    });
+
+    // Handle user join notifications
+    socket.on('userJoined', (data) => {
+        console.log('User joined:', data);
+        displaySystemMessage(`${data.username} joined the chat`);
+        updateUserList(data.users);
+    });
+
+    // Handle user leave notifications
+    socket.on('userLeft', (data) => {
+        console.log('User left:', data);
+        displaySystemMessage(`${data.username} left the chat`);
+        updateUserList(data.users);
+    });
+
     // Connection failed
     socket.on('connect_error', (error) => {
         console.error('Connection error:', error);
@@ -246,14 +273,9 @@ function setupSocketEvents(callback) {
     });
 
     // Disconnected
-    socket.on('disconnect', () => {
-        const typingDiv = document.querySelector('.typing-status');
-        if (typingDiv) {
-            typingDiv.remove();
-        }
-        lastTypingStatus = false;
+    socket.on('disconnect', (reason) => {
+        console.log('Disconnected from server. Reason:', reason);
         socketConnected = false;
-        console.log('Disconnected from server');
         showStatus('Disconnected from chat server. Trying to reconnect...', 'warning');
         
         // Update debug info
@@ -261,6 +283,15 @@ function setupSocketEvents(callback) {
         if (debugInfo) {
             debugInfo.textContent = 'Disconnected';
             debugInfo.style.backgroundColor = 'orange';
+        }
+        
+        // Attempt to reconnect
+        if (connectionRetries < MAX_CONNECTION_RETRIES) {
+            connectionRetries++;
+            setTimeout(() => {
+                console.log('Attempting to reconnect...');
+                connectToServer();
+            }, 2000);
         }
     });
 
@@ -274,66 +305,6 @@ function setupSocketEvents(callback) {
     socket.on('reconnect_failed', () => {
         console.log('Failed to reconnect');
         showStatus('Failed to reconnect to the server. Please refresh the page.', 'error');
-    });
-
-    // User list update
-    socket.on('userList', (users) => {
-        console.log('Received user list:', users);
-        // Handle both array and object with users property
-        const userArray = Array.isArray(users) ? users : (users && users.users ? users.users : []);
-        updateUserList(userArray);
-    });
-
-    // Receive message
-    socket.on('message', async (data) => {
-        try {
-            let message = data.content;
-            
-            // Decrypt message if it's encrypted
-            if (data.encrypted) {
-                // Import sender's key if not already imported
-                const senderKey = window.encryption.userKeys.get(data.sender);
-                if (!senderKey) {
-                    const user = window.users.find(u => u.username === data.sender);
-                    if (!user || !user.publicKey) {
-                        throw new Error('Sender\'s encryption key not available');
-                    }
-                    await window.encryption.importKey(user.publicKey);
-                }
-                
-                // Decrypt the message
-                message = await window.encryption.decrypt(data.content);
-            }
-            
-            // Add message to chat
-            addMessageToChat(message, false, data.sender, data.encrypted);
-        } catch (error) {
-            console.error('Error processing message:', error);
-            showStatus('Error processing message: ' + error.message, 'error');
-        }
-    });
-
-    // Legacy event handlers for backward compatibility
-    socket.on('userJoined', (data) => {
-        console.log('User joined (legacy event):', data);
-        addMessageToChat(data);
-    });
-    
-    socket.on('userLeft', (data) => {
-        console.log('User left (legacy event):', data);
-        addMessageToChat(data);
-    });
-
-    // Receive message history
-    socket.on('messageHistory', (messages) => {
-        console.log('Received message history, count:', messages.length);
-        const messagesContainer = document.querySelector('.chat-messages');
-        if (messagesContainer) {
-            messagesContainer.innerHTML = '';
-            messages.forEach(message => {
-                addMessageToChat(message);
-            });
-        }
     });
 
     // Handle typing status updates

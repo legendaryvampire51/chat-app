@@ -137,28 +137,39 @@ io.on('connection', (socket) => {
 
   // Handle user joining
   socket.on('join', (userData) => {
-    username = userData.username;
-    users.set(socket.id, username);
-    
-    // Send current user list to the new user
-    socket.emit('userList', getActiveUsers());
-    
-    // Send message history to new user
-    socket.emit('messageHistory', messageHistory);
-    
-    // Broadcast the new user joined
-    const joinMessage = {
-      id: uuidv4(),
-      type: 'system',
-      text: `${username} has joined the chat`,
-      timestamp: new Date().toISOString()
-    };
-    
-    addToHistory(joinMessage);
-    io.emit('message', joinMessage);
-    
-    // Update user list for all users
-    io.emit('userList', getActiveUsers());
+    try {
+      console.log('User joining:', userData);
+      username = userData.username;
+      users.set(socket.id, username);
+      
+      // Send current user list to the new user
+      const activeUsers = getActiveUsers();
+      console.log('Sending user list:', activeUsers);
+      socket.emit('userList', activeUsers);
+      
+      // Send message history to new user
+      console.log('Sending message history, count:', messageHistory.length);
+      socket.emit('messageHistory', messageHistory);
+      
+      // Broadcast the new user joined
+      const joinMessage = {
+        type: 'system',
+        content: `${username} joined the chat`,
+        timestamp: new Date().toISOString()
+      };
+      
+      // Add to history and broadcast
+      addToHistory(joinMessage);
+      socket.broadcast.emit('userJoined', {
+        username: username,
+        users: activeUsers
+      });
+      
+      console.log('User successfully joined:', username);
+    } catch (error) {
+      console.error('Error in join handler:', error);
+      socket.emit('error', { message: 'Failed to join chat' });
+    }
   });
 
   // Handle chat messages
@@ -334,36 +345,26 @@ io.on('connection', (socket) => {
 
   // Handle disconnection
   socket.on('disconnect', () => {
+    console.log('Client disconnected, socket ID:', socket.id);
     if (username) {
-      console.log(`Client disconnected: ${username}`);
-      
-      // Clear typing timeout if exists
-      if (typingUsers.has(socket.id)) {
-        clearTimeout(typingUsers.get(socket.id));
-        typingUsers.delete(socket.id);
-        broadcastTypingUsers();
-      }
-      
       users.delete(socket.id);
+      const activeUsers = getActiveUsers();
       
-      // Broadcast user left message
+      // Broadcast user left
       const leaveMessage = {
-        id: uuidv4(),
         type: 'system',
-        text: `${username} has left the chat`,
+        content: `${username} left the chat`,
         timestamp: new Date().toISOString()
       };
       
+      // Add to history and broadcast
       addToHistory(leaveMessage);
-      io.emit('message', leaveMessage);
+      io.emit('userLeft', {
+        username: username,
+        users: activeUsers
+      });
       
-      // Update user list for all clients
-      io.emit('userList', getActiveUsers());
-
-      // Remove user's public key
-      if (socket.username) {
-        userPublicKeys.delete(socket.username);
-      }
+      console.log('User left:', username);
     }
   });
 });
