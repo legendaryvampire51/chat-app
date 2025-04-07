@@ -100,10 +100,8 @@ function setupEventListeners() {
 
 // Connect to Socket.io server
 function connectToServer(callback) {
-    // Try to use production URL if available, fallback to localhost for development
-    const serverUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
-        ? 'http://localhost:3000' 
-        : 'https://chat-app-backend-ybjt.onrender.com';
+    // Use production URL
+    const serverUrl = 'https://chat-app-backend-ybjt.onrender.com';
         
     console.log('Connecting to server at:', serverUrl);
     
@@ -123,7 +121,7 @@ function connectToServer(callback) {
         }
     }
     
-    // Create socket connection
+    // Create socket connection with enhanced options
     try {
         console.log('Creating new socket connection...');
         socket = io(serverUrl, {
@@ -133,7 +131,9 @@ function connectToServer(callback) {
             timeout: 20000,
             forceNew: true,
             autoConnect: true,
-            path: '/socket.io'
+            path: '/socket.io',
+            transports: ['websocket', 'polling'],
+            secure: true
         });
         
         // Setup socket event handlers immediately
