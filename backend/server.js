@@ -134,21 +134,42 @@ io.on('connection', (socket) => {
   });
   
   let username = null;
+  let isAuthenticated = false;
 
-  // Handle user joining
-  socket.on('join', (userData) => {
+  // Handle authentication
+  socket.on('authenticate', async (authData) => {
     try {
-      console.log('User joining:', userData);
-      username = userData.username;
+      console.log('Authentication attempt for:', authData.username);
+      
+      if (!authData.username || authData.username.trim() === '') {
+        throw new Error('Username is required');
+      }
+      
+      // Check if username is already taken
+      if (Array.from(users.values()).includes(authData.username)) {
+        throw new Error('Username is already taken');
+      }
+      
+      // Store user data
+      username = authData.username;
       users.set(socket.id, username);
+      
+      // Store public key if provided
+      if (authData.publicKey) {
+        userPublicKeys.set(username, authData.publicKey);
+      }
+      
+      // Mark as authenticated
+      isAuthenticated = true;
+      
+      // Send authentication success
+      socket.emit('authenticated');
       
       // Send current user list to the new user
       const activeUsers = getActiveUsers();
-      console.log('Sending user list:', activeUsers);
       socket.emit('userList', activeUsers);
       
       // Send message history to new user
-      console.log('Sending message history, count:', messageHistory.length);
       socket.emit('messageHistory', messageHistory);
       
       // Broadcast the new user joined
@@ -165,10 +186,10 @@ io.on('connection', (socket) => {
         users: activeUsers
       });
       
-      console.log('User successfully joined:', username);
+      console.log('User successfully authenticated:', username);
     } catch (error) {
-      console.error('Error in join handler:', error);
-      socket.emit('error', { message: 'Failed to join chat' });
+      console.error('Authentication error:', error);
+      socket.emit('authentication_error', { message: error.message });
     }
   });
 
@@ -346,7 +367,7 @@ io.on('connection', (socket) => {
   // Handle disconnection
   socket.on('disconnect', () => {
     console.log('Client disconnected, socket ID:', socket.id);
-    if (username) {
+    if (username && isAuthenticated) {
       users.delete(socket.id);
       const activeUsers = getActiveUsers();
       

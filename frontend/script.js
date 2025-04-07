@@ -12,9 +12,11 @@ let currentUsername = localStorage.getItem('username') || '';
 let typingTimeout = null;
 let lastTypingStatus = false;
 let activeMessageEdit = null; // Track which message is being edited
-let socketConnected = false; // Track socket connection state
+let socketConnected = false;
+let isAuthenticated = false;
 let connectionRetries = 0;
 const MAX_CONNECTION_RETRIES = 3;
+const RECONNECT_DELAY = 2000;
 let unreadMessages = []; // Track messages that need to be marked as read
 let readReceipts = {}; // Store read receipts for messages
 
@@ -50,7 +52,7 @@ function setupEventListeners() {
     // Login form submit
     const loginForm = document.getElementById('login-form');
     if (loginForm) {
-        loginForm.addEventListener('submit', async (e) => {
+        loginForm.addEventListener('submit', (e) => {
             e.preventDefault();
             const username = document.getElementById('username').value.trim();
             
@@ -59,16 +61,8 @@ function setupEventListeners() {
                 return;
             }
             
-            try {
-                // Generate encryption key
-                const key = await encryption.generateKey();
-                
-                // Connect to server with username and encryption key
-                connectToServer(username, key);
-            } catch (error) {
-                console.error('Error during login:', error);
-                showStatus('Error during login: ' + error.message, 'error');
-            }
+            // Connect to server with username
+            connectToServer(username);
         });
     }
     
@@ -99,17 +93,10 @@ function setupEventListeners() {
 }
 
 // Connect to Socket.io server
-function connectToServer(callback) {
-    // Use production URL
+function connectToServer(username = null, callback = null) {
     const serverUrl = 'https://chat-app-backend-ybjt.onrender.com';
-        
-    console.log('Connecting to server at:', serverUrl);
     
-    // Update debug info
-    const debugInfo = document.getElementById('debug-info');
-    if (debugInfo) {
-        debugInfo.textContent = 'Connecting to: ' + serverUrl;
-    }
+    console.log('Connecting to server at:', serverUrl);
     
     // If socket already exists, disconnect it
     if (socket) {
@@ -121,7 +108,6 @@ function connectToServer(callback) {
         }
     }
     
-    // Create socket connection with enhanced options
     try {
         console.log('Creating new socket connection...');
         socket = io(serverUrl, {
@@ -136,40 +122,16 @@ function connectToServer(callback) {
             secure: true
         });
         
-        // Setup socket event handlers immediately
-        setupSocketEvents(callback);
-        
-        // Initialize encryption if available
-        if (window.encryption) {
-            window.encryption.initialize().then(() => {
-                console.log('Encryption status:', window.encryption.isSupported ? 'Enabled' : 'Disabled');
-            }).catch(error => {
-                console.warn('Encryption initialization failed:', error);
-            });
-        }
+        // Setup socket event handlers
+        setupSocketEvents(username, callback);
     } catch (error) {
         console.error('Error creating socket connection:', error);
-        socketConnected = false;
-        showStatus('Failed to connect: ' + error.message, 'error');
-        
-        if (debugInfo) {
-            debugInfo.textContent = 'Connection Error: ' + error.message;
-        }
-        
-        // Try to reconnect if under max retries
-        if (connectionRetries < MAX_CONNECTION_RETRIES) {
-            connectionRetries++;
-            const retryConnection = () => {
-                console.log(`Retrying connection (${connectionRetries}/${MAX_CONNECTION_RETRIES})...`);
-                connectToServer(callback);
-            };
-            setTimeout(retryConnection, 2000);
-        }
+        handleConnectionError(error);
     }
 }
 
-// Setup all socket event handlers
-function setupSocketEvents(callback) {
+// Setup socket event handlers
+function setupSocketEvents(username = null, callback = null) {
     if (!socket) {
         console.error('Cannot setup events - socket not initialized');
         return;
@@ -184,28 +146,41 @@ function setupSocketEvents(callback) {
         connectionRetries = 0;
         showStatus('Connected to chat server', 'success');
         
-        // Update debug info
-        const debugInfo = document.getElementById('debug-info');
-        if (debugInfo) {
-            debugInfo.textContent = 'Connected ✓';
-            debugInfo.style.backgroundColor = 'green';
+        // If we have a username, authenticate
+        if (username) {
+            authenticateUser(username);
         }
         
-        // Request read receipts when connected
-        if (socket && socketConnected) {
-            socket.emit('getReadReceipts');
-        }
-        
-        // If we have a username, automatically join the chat
-        if (currentUsername) {
-            console.log('Auto-joining with username:', currentUsername);
-            joinChat(currentUsername, true);
-        }
-        
-        // Call the callback if provided (for reconnection scenarios)
         if (typeof callback === 'function') {
             callback();
         }
+    });
+
+    // Authentication successful
+    socket.on('authenticated', () => {
+        console.log('Authentication successful');
+        isAuthenticated = true;
+        showStatus('Successfully joined chat', 'success');
+        showChat();
+    });
+
+    // Authentication failed
+    socket.on('authentication_error', (error) => {
+        console.error('Authentication failed:', error);
+        isAuthenticated = false;
+        showStatus('Authentication failed: ' + error.message, 'error');
+    });
+
+    // Connection error
+    socket.on('connect_error', (error) => {
+        console.error('Connection error:', error);
+        handleConnectionError(error);
+    });
+
+    // Disconnected
+    socket.on('disconnect', (reason) => {
+        console.log('Disconnected from server. Reason:', reason);
+        handleDisconnect(reason);
     });
 
     // Handle user list updates
@@ -238,43 +213,6 @@ function setupSocketEvents(callback) {
         console.log('User left:', data);
         displaySystemMessage(`${data.username} left the chat`);
         updateUserList(data.users);
-    });
-
-    // Connection failed
-    socket.on('connect_error', (error) => {
-        console.error('Connection error:', error);
-        socketConnected = false;
-        showStatus('Error connecting to chat server: ' + error.message, 'error');
-        
-        // Update debug info
-        const debugInfo = document.getElementById('debug-info');
-        if (debugInfo) {
-            debugInfo.textContent = 'Connection Error: ' + error.message;
-            debugInfo.style.backgroundColor = 'red';
-        }
-    });
-
-    // Disconnected
-    socket.on('disconnect', (reason) => {
-        console.log('Disconnected from server. Reason:', reason);
-        socketConnected = false;
-        showStatus('Disconnected from chat server. Trying to reconnect...', 'warning');
-        
-        // Update debug info
-        const debugInfo = document.getElementById('debug-info');
-        if (debugInfo) {
-            debugInfo.textContent = 'Disconnected';
-            debugInfo.style.backgroundColor = 'orange';
-        }
-        
-        // Attempt to reconnect
-        if (connectionRetries < MAX_CONNECTION_RETRIES) {
-            connectionRetries++;
-            setTimeout(() => {
-                console.log('Attempting to reconnect...');
-                connectToServer();
-            }, 2000);
-        }
     });
 
     // Reconnecting
@@ -479,70 +417,76 @@ function showChat() {
     }
 }
 
-// Join chat room
-async function joinChat(username, reconnect = false) {
-    console.log('Starting joinChat process for username:', username);
-    
-    if (!socket) {
-        console.error('Socket not initialized');
-        alert('Connection error: Socket not initialized. Refreshing the page may help.');
+// Handle user authentication
+async function authenticateUser(username) {
+    if (!socket || !socketConnected) {
+        showStatus('Not connected to server', 'error');
         return;
     }
-    
-    if (!socketConnected) {
-        console.error('Socket not connected when trying to join chat');
-        const debugInfo = document.getElementById('debug-info');
-        if (debugInfo) {
-            debugInfo.textContent = 'Error: Socket not connected!';
-            debugInfo.style.backgroundColor = 'red';
-        }
-        
-        // Try to reconnect
-        showStatus('Not connected to server. Attempting to reconnect...', 'warning');
-        connectToServer(() => {
-            // Retry joining after connection
-            if (socketConnected) {
-                joinChat(username, reconnect);
-            } else {
-                showStatus('Could not connect to server. Please refresh the page.', 'error');
-            }
-        });
-        return;
-    }
-    
-    if (!username || username.trim() === '') {
-        alert('Please enter a username');
-        return;
-    }
-    
+
     try {
-        console.log('Generating key for user...');
-        // Generate key for the user
-        const key = await encryption.generateKey();
-        console.log('Key generated successfully');
+        console.log('Authenticating user:', username);
         
-        // Store username for reconnection
+        // Generate encryption key if available
+        let publicKey = null;
+        if (window.encryption && window.encryption.isSupported) {
+            try {
+                publicKey = await window.encryption.generateKey();
+            } catch (error) {
+                console.warn('Encryption initialization failed:', error);
+            }
+        }
+
+        // Send authentication request
+        socket.emit('authenticate', {
+            username: username,
+            publicKey: publicKey
+        });
+
+        // Store username
         currentUsername = username;
         localStorage.setItem('username', username);
-        
-        console.log('Emitting join event...');
-        // Emit join event with key
-        socket.emit('join', { username });
-        socket.emit('exchangePublicKey', { username, publicKey: key });
-        
-        console.log('Showing chat interface...');
-        // Show chat interface
-        showChat();
-        
-        // Update debug info
-        const debugInfo = document.getElementById('debug-info');
-        if (debugInfo) {
-            debugInfo.textContent = 'Joined as: ' + username;
-            debugInfo.style.backgroundColor = 'green';
-        }
     } catch (error) {
-        console.error('Error in joinChat:', error);
-        alert('Error joining chat: ' + error.message);
+        console.error('Error during authentication:', error);
+        showStatus('Error during authentication: ' + error.message, 'error');
+    }
+}
+
+// Handle connection errors
+function handleConnectionError(error) {
+    socketConnected = false;
+    showStatus('Connection error: ' + error.message, 'error');
+    
+    if (connectionRetries < MAX_CONNECTION_RETRIES) {
+        connectionRetries++;
+        const retryConnection = () => {
+            console.log(`Retrying connection (${connectionRetries}/${MAX_CONNECTION_RETRIES})...`);
+            connectToServer(currentUsername);
+        };
+        setTimeout(retryConnection, RECONNECT_DELAY);
+    } else {
+        showStatus('Failed to connect after multiple attempts. Please refresh the page.', 'error');
+    }
+}
+
+// Handle disconnection
+function handleDisconnect(reason) {
+    socketConnected = false;
+    isAuthenticated = false;
+    
+    // Only show warning if we were previously connected
+    if (reason !== 'io client disconnect') {
+        showStatus('Disconnected from server. Reason: ' + reason, 'warning');
+    }
+    
+    // Only attempt to reconnect if we were authenticated
+    if (isAuthenticated && connectionRetries < MAX_CONNECTION_RETRIES) {
+        connectionRetries++;
+        const retryConnection = () => {
+            console.log(`Retrying connection (${connectionRetries}/${MAX_CONNECTION_RETRIES})...`);
+            connectToServer(currentUsername);
+        };
+        setTimeout(retryConnection, RECONNECT_DELAY);
     }
 }
 
