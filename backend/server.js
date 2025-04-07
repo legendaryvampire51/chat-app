@@ -162,12 +162,16 @@ io.on('connection', (socket) => {
       // Mark as authenticated
       isAuthenticated = true;
       
-      // Send authentication success
-      socket.emit('authenticated');
-      
-      // Send current user list to the new user
+      // Get current user list
       const activeUsers = getActiveUsers();
-      socket.emit('userList', activeUsers);
+      
+      // Send authentication success with user list
+      socket.emit('authenticated', {
+        users: activeUsers
+      });
+      
+      // Send current user list to all users
+      io.emit('userList', activeUsers);
       
       // Send message history to new user
       socket.emit('messageHistory', messageHistory);
@@ -181,7 +185,7 @@ io.on('connection', (socket) => {
       
       // Add to history and broadcast
       addToHistory(joinMessage);
-      socket.broadcast.emit('userJoined', {
+      io.emit('userJoined', {
         username: username,
         users: activeUsers
       });
@@ -195,18 +199,21 @@ io.on('connection', (socket) => {
 
   // Handle chat messages
   socket.on('sendMessage', (messageData) => {
-    if (username) {
-      const message = {
-        id: uuidv4(),
-        sender: username,
-        text: messageData.text,
-        timestamp: new Date().toISOString(),
-        type: 'user'
-      };
-      
-      const savedMessage = addToHistory(message);
-      io.emit('message', savedMessage);
+    if (!username || !isAuthenticated) {
+      console.error('Unauthorized message attempt');
+      return;
     }
+
+    const message = {
+      id: uuidv4(),
+      sender: username,
+      text: messageData.text,
+      timestamp: new Date().toISOString(),
+      type: 'user'
+    };
+    
+    const savedMessage = addToHistory(message);
+    io.emit('message', savedMessage);
   });
 
   // Handle read receipts

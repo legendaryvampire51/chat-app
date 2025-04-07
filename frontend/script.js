@@ -93,75 +93,63 @@ function setupEventListeners() {
 }
 
 // Connect to Socket.io server
-function connectToServer(username = null, callback = null) {
-    const serverUrl = 'https://chat-app-backend-ybjt.onrender.com';
-    
-    console.log('Connecting to server at:', serverUrl);
-    
-    // If socket already exists, disconnect it
-    if (socket) {
-        try {
-            console.log('Disconnecting existing socket connection');
-            socket.disconnect();
-        } catch (e) {
-            console.error('Error disconnecting socket:', e);
-        }
-    }
+function connectToServer(username = null) {
+    console.log('Connecting to server...');
+    showStatus('Connecting to server...', 'info');
     
     try {
-        console.log('Creating new socket connection...');
-        socket = io(serverUrl, {
+        socket = io(BACKEND_URL, {
+            reconnection: true,
             reconnectionAttempts: 5,
             reconnectionDelay: 1000,
-            reconnectionDelayMax: 5000,
-            timeout: 20000,
-            forceNew: true,
-            autoConnect: true,
-            path: '/socket.io',
-            transports: ['websocket', 'polling'],
-            secure: true
+            timeout: 20000
         });
-        
-        // Setup socket event handlers
-        setupSocketEvents(username, callback);
+
+        setupSocketEvents(username);
     } catch (error) {
-        console.error('Error creating socket connection:', error);
-        handleConnectionError(error);
+        console.error('Connection error:', error);
+        showStatus('Connection error: ' + error.message, 'error');
     }
 }
 
 // Setup socket event handlers
-function setupSocketEvents(username = null, callback = null) {
-    if (!socket) {
-        console.error('Cannot setup events - socket not initialized');
-        return;
-    }
-    
-    console.log('Setting up socket events');
+function setupSocketEvents(username = null) {
+    if (!socket) return;
 
-    // Connection successful
     socket.on('connect', () => {
         console.log('Connected to server');
         socketConnected = true;
-        connectionRetries = 0;
-        showStatus('Connected to chat server', 'success');
+        showStatus('Connected to server', 'success');
         
-        // If we have a username, authenticate
         if (username) {
             authenticateUser(username);
         }
-        
-        if (typeof callback === 'function') {
-            callback();
-        }
     });
 
-    // Authentication successful
-    socket.on('authenticated', () => {
+    socket.on('authenticated', (data) => {
         console.log('Authentication successful');
         isAuthenticated = true;
         showStatus('Successfully joined chat', 'success');
         showChat();
+        
+        // Update user list with current user
+        if (data && data.users) {
+            updateUserList(data.users);
+        }
+    });
+
+    socket.on('userList', (users) => {
+        console.log('Received user list:', users);
+        updateUserList(users);
+    });
+
+    socket.on('messageHistory', (history) => {
+        console.log('Received message history');
+        if (history && Array.isArray(history)) {
+            history.forEach(message => {
+                addMessageToChat(message);
+            });
+        }
     });
 
     // Authentication failed
@@ -181,50 +169,6 @@ function setupSocketEvents(username = null, callback = null) {
     socket.on('disconnect', (reason) => {
         console.log('Disconnected from server. Reason:', reason);
         handleDisconnect(reason);
-    });
-
-    // Handle user list updates
-    socket.on('userList', (users) => {
-        console.log('Received user list:', users);
-        updateUserList(users);
-    });
-
-    // Handle message history
-    socket.on('messageHistory', (history) => {
-        console.log('Received message history');
-        displayMessageHistory(history);
-    });
-
-    // Handle new messages
-    socket.on('message', (messageData) => {
-        console.log('Received new message:', messageData);
-        displayMessage(messageData);
-    });
-
-    // Handle user join notifications
-    socket.on('userJoined', (data) => {
-        console.log('User joined:', data);
-        displaySystemMessage(`${data.username} joined the chat`);
-        updateUserList(data.users);
-    });
-
-    // Handle user leave notifications
-    socket.on('userLeft', (data) => {
-        console.log('User left:', data);
-        displaySystemMessage(`${data.username} left the chat`);
-        updateUserList(data.users);
-    });
-
-    // Reconnecting
-    socket.on('reconnecting', (attemptNumber) => {
-        console.log(`Attempting to reconnect: ${attemptNumber}`);
-        showStatus(`Reconnecting... (Attempt ${attemptNumber})`, 'warning');
-    });
-
-    // Reconnect failed
-    socket.on('reconnect_failed', () => {
-        console.log('Failed to reconnect');
-        showStatus('Failed to reconnect to the server. Please refresh the page.', 'error');
     });
 
     // Handle typing status updates
@@ -516,48 +460,18 @@ function showStatus(message, type = 'info') {
 // Update user list
 function updateUserList(users) {
     const userList = document.querySelector('.user-list');
-    const userCount = document.querySelector('.user-list-header span');
-    
-    if (!userList || !userCount) {
-        console.error('User list elements not found');
-        return;
-    }
-    
+    if (!userList) return;
+
     userList.innerHTML = '';
-    userCount.textContent = users.length;
     
-    users.forEach(username => {
-        const userItem = document.createElement('div');
-        userItem.className = 'user-item';
-        
-        // Add encryption status indicator
-        const hasKey = encryption.userKeys.has(username);
-        const statusIcon = hasKey ? '🔒' : '��';
-        
-        // Create user name span
-        const userNameSpan = document.createElement('span');
-        userNameSpan.className = 'user-name';
-        userNameSpan.textContent = username;
-        
-        // Create encryption status span
-        const statusSpan = document.createElement('span');
-        statusSpan.className = 'encryption-status';
-        statusSpan.title = hasKey ? 'Encryption available' : 'Encryption not available';
-        statusSpan.textContent = statusIcon;
-        
-        // Append elements
-        userItem.appendChild(userNameSpan);
-        userItem.appendChild(statusSpan);
-        
-        // Highlight current user
-        if (username === currentUsername) {
-            const youText = document.createTextNode(' (you)');
-            userNameSpan.appendChild(youText);
-            userItem.classList.add('current-user');
-        }
-        
-        userList.appendChild(userItem);
-    });
+    if (users && Array.isArray(users)) {
+        users.forEach(username => {
+            const userItem = document.createElement('div');
+            userItem.className = 'user-item';
+            userItem.textContent = username;
+            userList.appendChild(userItem);
+        });
+    }
 }
 
 // Handle typing status
@@ -590,33 +504,27 @@ function handleTyping() {
 }
 
 // Handle sending messages
-async function sendMessage() {
-    if (!socket || !socketConnected) {
+function sendMessage() {
+    if (!socket || !socket.connected) {
         showStatus('Not connected to server', 'error');
         return;
     }
 
+    const messageInput = document.getElementById('message-input');
+    if (!messageInput) {
+        showStatus('Message input not found', 'error');
+        return;
+    }
+
+    const message = messageInput.value.trim();
+    if (!message) return;
+
     try {
-        let messageData = {
-            content: messageInput.value.trim(),
-            timestamp: new Date().toISOString(),
-            sender: currentUsername
-        };
-
-        // Only attempt encryption if it's supported
-        if (window.encryption && window.encryption.isSupported) {
-            try {
-                const encryptedMessage = await window.encryption.encrypt(messageData.content);
-                messageData.content = encryptedMessage;
-                messageData.encrypted = true;
-            } catch (error) {
-                console.warn('Encryption failed, sending unencrypted message:', error);
-                // Continue with unencrypted message
-            }
-        }
-
-        socket.emit('message', messageData);
-        displayMessage(messageData);
+        socket.emit('sendMessage', {
+            text: message,
+            timestamp: new Date().toISOString()
+        });
+        messageInput.value = '';
     } catch (error) {
         console.error('Error sending message:', error);
         showStatus('Error sending message: ' + error.message, 'error');
